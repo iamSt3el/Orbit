@@ -75,6 +75,20 @@ pub mod qobject {
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QByteArray, QHash, QHashPair_i32_QByteArray, QString, QVariant};
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+// One Tokio runtime shared across all invokables, instead of building and
+// tearing one down on every call. Safe because cxx-qt invokables always run
+// on the Qt main thread, one at a time — never concurrently.
+fn runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to create Tokio runtime")
+    })
+}
 
 pub struct FileListModelRust {
     entries: Vec<fm_core::FileEntry>,
@@ -142,11 +156,7 @@ impl qobject::FileListModel {
 
     fn navigate(mut self: core::pin::Pin<&mut Self>, path: &QString) {
         let path_buf = PathBuf::from(path.to_string());
-        let entries = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("failed to create Tokio runtime")
-            .block_on(gather_entries(&path_buf));
+        let entries = runtime().block_on(gather_entries(&path_buf));
 
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().entries = entries;
@@ -157,11 +167,9 @@ impl qobject::FileListModel {
 
     fn create_folder(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("failed to create Tokio runtime");
-        if let Err(e) = rt.block_on(fm_core::ops::create_folder(&current, &name.to_string())) {
+        if let Err(e) =
+            runtime().block_on(fm_core::ops::create_folder(&current, &name.to_string()))
+        {
             eprintln!("create_folder failed: {e}");
         }
         let refresh_path = QString::from(&current.display().to_string());
@@ -171,11 +179,7 @@ impl qobject::FileListModel {
     fn rename_entry(mut self: core::pin::Pin<&mut Self>, old_name: &QString, new_name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(old_name.to_string());
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("failed to create Tokio runtime");
-        if let Err(e) = rt.block_on(fm_core::ops::rename(&target, &new_name.to_string())) {
+        if let Err(e) = runtime().block_on(fm_core::ops::rename(&target, &new_name.to_string())) {
             eprintln!("rename failed: {e}");
         }
         let refresh_path = QString::from(&current.display().to_string());
@@ -185,11 +189,7 @@ impl qobject::FileListModel {
     fn delete_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(name.to_string());
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("failed to create Tokio runtime");
-        if let Err(e) = rt.block_on(fm_core::trash::move_to_trash(&target)) {
+        if let Err(e) = runtime().block_on(fm_core::trash::move_to_trash(&target)) {
             eprintln!("delete_entry failed: {e}");
         }
         let refresh_path = QString::from(&current.display().to_string());

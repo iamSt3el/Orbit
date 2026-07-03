@@ -4,14 +4,16 @@ import com.filemanager.app 1.0
 Item {
     id: root
 
-    // Set by the ListView's model role bindings (name, isDir, size, iconKey)
-    // plus the containing view's own `model` (the FileListModel instance),
-    // used here only to call deleteEntry.
+    // Set by the ListView's model role bindings.
     required property string name
     required property bool isDir
     required property int size
     required property string iconKey
-    property var fileModel
+
+    // The containing ListView's model (the FileListModel instance), read via
+    // the attached ListView.view property rather than a manually-passed
+    // property — more reliable across delegate recycling.
+    readonly property var fileModel: ListView.view ? ListView.view.model : null
 
     width: ListView.view ? ListView.view.width : 0
     height: 60

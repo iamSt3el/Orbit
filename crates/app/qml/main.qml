@@ -108,9 +108,7 @@ Window {
                         anchors.margins: 4
                         model: fileModel
                         spacing: 2
-                        delegate: FileListItem {
-                            fileModel: fileModel
-                        }
+                        delegate: FileListItem {}
                     }
                 }
             }
