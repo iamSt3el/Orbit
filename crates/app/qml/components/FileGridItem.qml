@@ -10,6 +10,7 @@ Item {
     required property string iconKey
     required property string modified
     required property string mimeType
+    required property string permissions
 
     signal contextMenuRequested(real x, real y)
 
@@ -46,12 +47,20 @@ Item {
             anchors.centerIn: parent
             spacing: 8
 
-            Rectangle {
+            Item {
                 width: 56
                 height: 56
-                radius: Shape.medium
-                color: root.isDir ? Qt.alpha(Color.scheme.primary, 0.12) : "transparent"
                 anchors.horizontalCenter: parent.horizontalCenter
+
+                // Hover-only tonal container, matching FileListItem — see
+                // its comment for why this isn't a permanent background.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Shape.medium
+                    color: Qt.alpha(Color.scheme.primary, 0.12)
+                    opacity: (root.isDir && cellArea.containsMouse) ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                }
 
                 Icon {
                     anchors.centerIn: parent

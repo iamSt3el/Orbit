@@ -51,6 +51,66 @@ pub fn copy<'a>(
     })
 }
 
+/// Copies `path` to a sibling `"name (copy)"` (or `"name (copy N)"` if that's
+/// already taken), returning the new path.
+pub async fn duplicate(path: &Path) -> io::Result<PathBuf> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no parent"))?;
+    let dst = unique_duplicate_name(parent, path);
+    copy(path, &dst).await?;
+    Ok(dst)
+}
+
+fn unique_duplicate_name(parent: &Path, path: &Path) -> PathBuf {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let ext = path.extension().and_then(|e| e.to_str());
+
+    let mut candidate = match ext {
+        Some(ext) => parent.join(format!("{stem} (copy).{ext}")),
+        None => parent.join(format!("{stem} (copy)")),
+    };
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = match ext {
+            Some(ext) => parent.join(format!("{stem} (copy {n}).{ext}")),
+            None => parent.join(format!("{stem} (copy {n})")),
+        };
+        n += 1;
+    }
+    candidate
+}
+
+/// Opens a terminal emulator with its working directory set to `path`. There
+/// is no XDG standard for "the user's terminal" the way `xdg-open` covers
+/// files, so this tries a handful of common emulators in order.
+pub async fn open_terminal(path: &Path) -> io::Result<()> {
+    const CANDIDATES: &[&str] = &[
+        "x-terminal-emulator",
+        "konsole",
+        "gnome-terminal",
+        "xterm",
+        "alacritty",
+        "kitty",
+    ];
+    for candidate in CANDIDATES {
+        if tokio::process::Command::new(candidate)
+            .current_dir(path)
+            .spawn()
+            .is_ok()
+        {
+            return Ok(());
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "no terminal emulator found",
+    ))
+}
+
 pub async fn move_entry(src: &Path, dst: &Path) -> io::Result<()> {
     match tokio::fs::rename(src, dst).await {
         Ok(()) => Ok(()),

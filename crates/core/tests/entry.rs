@@ -12,6 +12,7 @@ fn file_entry_stores_all_fields() {
         modified: SystemTime::UNIX_EPOCH,
         mime_type: "text/plain".to_string(),
         icon_key: "text".to_string(),
+        permissions: "rw-r--r--".to_string(),
     };
 
     assert_eq!(entry.name, "foo.txt");
@@ -20,4 +21,5 @@ fn file_entry_stores_all_fields() {
     assert_eq!(entry.size, 42);
     assert_eq!(entry.mime_type, "text/plain");
     assert_eq!(entry.icon_key, "text");
+    assert_eq!(entry.permissions, "rw-r--r--");
 }

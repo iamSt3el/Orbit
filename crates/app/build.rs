@@ -5,6 +5,7 @@ fn main() {
         QmlModule::new("com.filemanager.app")
             .qml_files([
                 "qml/main.qml",
+                "qml/util/format.js",
                 "qml/shapes/material-shapes.js",
                 "qml/shapes/MorphShape.qml",
                 "qml/shapes/geometry/offset.js",

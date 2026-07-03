@@ -93,6 +93,20 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openEntry"]
         fn open_entry(self: Pin<&mut FileListModel>, name: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "duplicateEntry"]
+        fn duplicate_entry(self: Pin<&mut FileListModel>, name: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "openTerminalHere"]
+        fn open_terminal_here(self: Pin<&mut FileListModel>);
+    }
+
+    unsafe extern "RustQt" {
+        #[qinvokable]
+        #[cxx_name = "entryAbsolutePath"]
+        fn entry_absolute_path(self: &FileListModel, name: &QString) -> QString;
     }
 }
 
@@ -146,6 +160,7 @@ const SIZE_ROLE: i32 = 0x0102;
 const ICON_KEY_ROLE: i32 = 0x0103;
 const MODIFIED_ROLE: i32 = 0x0104;
 const MIME_TYPE_ROLE: i32 = 0x0105;
+const PERMISSIONS_ROLE: i32 = 0x0106;
 
 fn format_modified(modified: std::time::SystemTime) -> String {
     use time::format_description::well_known::Iso8601;
@@ -190,6 +205,7 @@ impl qobject::FileListModel {
             ICON_KEY_ROLE => QVariant::from(&QString::from(&entry.icon_key)),
             MODIFIED_ROLE => QVariant::from(&QString::from(&format_modified(entry.modified))),
             MIME_TYPE_ROLE => QVariant::from(&QString::from(&entry.mime_type)),
+            PERMISSIONS_ROLE => QVariant::from(&QString::from(&entry.permissions)),
             _ => QVariant::default(),
         }
     }
@@ -202,6 +218,7 @@ impl qobject::FileListModel {
         roles.insert(ICON_KEY_ROLE, QByteArray::from("iconKey"));
         roles.insert(MODIFIED_ROLE, QByteArray::from("modified"));
         roles.insert(MIME_TYPE_ROLE, QByteArray::from("mimeType"));
+        roles.insert(PERMISSIONS_ROLE, QByteArray::from("permissions"));
         roles
     }
 
@@ -307,5 +324,26 @@ impl qobject::FileListModel {
         if let Err(e) = runtime().block_on(fm_core::ops::open_file(&target)) {
             eprintln!("open_entry failed: {e}");
         }
+    }
+
+    fn duplicate_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let target = current.join(name.to_string());
+        if let Err(e) = runtime().block_on(fm_core::ops::duplicate(&target)) {
+            eprintln!("duplicate_entry failed: {e}");
+        }
+        self.as_mut().refresh_entries_diff();
+    }
+
+    fn open_terminal_here(self: core::pin::Pin<&mut Self>) {
+        let current = PathBuf::from(self.current_path.to_string());
+        if let Err(e) = runtime().block_on(fm_core::ops::open_terminal(&current)) {
+            eprintln!("open_terminal_here failed: {e}");
+        }
+    }
+
+    fn entry_absolute_path(&self, name: &QString) -> QString {
+        let current = PathBuf::from(self.current_path.to_string());
+        QString::from(&current.join(name.to_string()).display().to_string())
     }
 }

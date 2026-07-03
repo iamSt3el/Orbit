@@ -1,4 +1,5 @@
 import QtQuick
+import "../util/format.js" as Format
 import com.filemanager.app 1.0
 
 // A minimal custom modal dialog showing an entry's details.
@@ -10,17 +11,19 @@ Item {
     property int entrySize: 0
     property string entryModified: ""
     property string entryMimeType: ""
+    property string entryPermissions: ""
 
     anchors.fill: parent
     visible: false
     z: 2000
 
-    function open(name, isDir, size, modified, mimeType) {
+    function open(name, isDir, size, modified, mimeType, permissions) {
         root.entryName = name
         root.entryIsDir = isDir
         root.entrySize = size
         root.entryModified = modified
         root.entryMimeType = mimeType
+        root.entryPermissions = permissions
         visible = true
     }
 
@@ -50,24 +53,17 @@ Item {
             id: _content
             anchors.fill: parent
             anchors.margins: 20
-            spacing: 12
+            spacing: 16
 
-            Row {
+            Column {
                 width: parent.width
-                spacing: 12
+                spacing: 8
 
-                Rectangle {
-                    width: 40
-                    height: 40
-                    radius: Shape.medium
-                    color: root.entryIsDir ? Qt.alpha(Color.scheme.primary, 0.12) : "transparent"
-
-                    Icon {
-                        anchors.centerIn: parent
-                        content: root.entryIsDir ? "folder" : "description"
-                        iconSize: 24
-                        color: root.entryIsDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
-                    }
+                Icon {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    content: root.entryIsDir ? "folder" : "description"
+                    iconSize: 40
+                    color: root.entryIsDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
                 }
 
                 Text {
@@ -76,39 +72,57 @@ Item {
                     font.family: Type.titleMedium.family
                     font.weight: Type.titleMedium.weight
                     font.pixelSize: Type.titleMedium.size
+                    horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideMiddle
-                    width: parent.width - 52
-                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width
+                    anchors.horizontalCenter: parent.horizontalCenter
                 }
             }
 
-            Repeater {
-                model: [
-                    { label: "Type", value: root.entryIsDir ? "Folder" : root.entryMimeType },
-                    { label: "Size", value: root.entryIsDir ? "—" : (root.entrySize + " bytes") },
-                    { label: "Modified", value: root.entryModified }
-                ]
+            Rectangle {
+                width: parent.width
+                height: _infoColumn.implicitHeight + 16
+                radius: Shape.medium
+                color: Color.scheme.surfaceContainerHigh
 
-                delegate: Row {
-                    required property var modelData
-                    width: parent.width
-                    spacing: 8
+                Column {
+                    id: _infoColumn
+                    anchors.fill: parent
+                    anchors.margins: 8
 
-                    Text {
-                        text: modelData.label
-                        color: Color.scheme.surfaceVariantText
-                        font.family: Type.bodyMedium.family
-                        font.pixelSize: Type.bodyMedium.size
-                        width: 80
-                    }
+                    Repeater {
+                        model: [
+                            { label: "Type", value: root.entryIsDir ? "Folder" : root.entryMimeType },
+                            { label: "Size", value: root.entryIsDir ? "—" : Format.formatBytes(root.entrySize) },
+                            { label: "Permissions", value: root.entryPermissions },
+                            { label: "Modified", value: Format.formatModified(root.entryModified) }
+                        ]
 
-                    Text {
-                        text: modelData.value
-                        color: Color.scheme.surfaceText
-                        font.family: Type.bodyMedium.family
-                        font.pixelSize: Type.bodyMedium.size
-                        elide: Text.ElideRight
-                        width: parent.width - 88
+                        delegate: Row {
+                            required property var modelData
+                            width: _infoColumn.width
+                            height: 36
+                            spacing: 8
+
+                            Text {
+                                text: modelData.label
+                                color: Color.scheme.surfaceVariantText
+                                font.family: Type.bodyMedium.family
+                                font.pixelSize: Type.bodyMedium.size
+                                width: 92
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: modelData.value
+                                color: Color.scheme.surfaceText
+                                font.family: Type.bodyMedium.family
+                                font.pixelSize: Type.bodyMedium.size
+                                elide: Text.ElideRight
+                                width: parent.width - 100
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
                     }
                 }
             }

@@ -69,6 +69,31 @@ async fn copy_duplicates_a_directory_tree() {
 }
 
 #[tokio::test]
+async fn duplicate_appends_copy_suffix_before_the_extension() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("report.txt");
+    fs::write(&src, b"data").unwrap();
+
+    let duplicated = ops::duplicate(&src).await.unwrap();
+
+    assert!(src.exists(), "duplicate must not remove the source");
+    assert_eq!(duplicated, dir.path().join("report (copy).txt"));
+    assert_eq!(fs::read_to_string(&duplicated).unwrap(), "data");
+}
+
+#[tokio::test]
+async fn duplicate_increments_when_a_copy_already_exists() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("notes");
+    fs::create_dir(&src).unwrap();
+    fs::create_dir(dir.path().join("notes (copy)")).unwrap();
+
+    let duplicated = ops::duplicate(&src).await.unwrap();
+
+    assert_eq!(duplicated, dir.path().join("notes (copy 2)"));
+}
+
+#[tokio::test]
 async fn move_entry_relocates_a_file_within_same_filesystem() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("a.txt");

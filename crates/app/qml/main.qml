@@ -11,6 +11,7 @@ Window {
     color: Color.scheme.surface
 
     property string viewMode: "list" // "list" | "grid"
+    property string _pendingDeleteName: ""
 
     FileListModel {
         id: fileModel
@@ -37,6 +38,18 @@ Window {
         var maxY = Math.max(0, view.contentHeight - view.height)
         view.contentY = Math.max(0, Math.min(maxY, view.contentY - (wheel.angleDelta.y / 120) * 180))
         wheel.accepted = true
+    }
+
+    // Invisible helper for "Copy Path" — TextEdit.copy() writes the current
+    // selection straight to the system clipboard, no extra module needed.
+    TextEdit {
+        id: clipboardHelper
+        visible: false
+        function copyText(text) {
+            clipboardHelper.text = text
+            clipboardHelper.selectAll()
+            clipboardHelper.copy()
+        }
     }
 
     Column {
@@ -88,10 +101,8 @@ Window {
                             cacheBuffer: 400
                             acceptedButtons: Qt.NoButton
                             delegate: FileListItem {
-                                onContextMenuRequested: (x, y) => {
-                                    var pos = contentArea.mapFromItem(null, x, y)
-                                    itemContextMenu.popup(pos.x, pos.y, name, isDir, size, modified, mimeType)
-                                }
+                                onContextMenuRequested: (x, y) =>
+                                    itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
                             }
 
                             MouseArea {
@@ -100,11 +111,15 @@ Window {
                                 // item reaches FileListItem's own MouseArea first;
                                 // this one only fires for clicks that miss every
                                 // delegate, i.e. genuinely empty space.
+                                id: listBackgroundArea
                                 z: -1
                                 anchors.fill: parent
                                 acceptedButtons: Qt.RightButton
                                 onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
-                                onClicked: (mouse) => contextMenu.popup(mouse.x + 20, mouse.y + 20)
+                                onClicked: (mouse) => {
+                                    var scenePos = listBackgroundArea.mapToItem(null, mouse.x, mouse.y)
+                                    contextMenu.popup(scenePos.x, scenePos.y)
+                                }
                             }
 
                             ScrollBar {
@@ -133,21 +148,23 @@ Window {
                             cacheBuffer: 400
                             acceptedButtons: Qt.NoButton
                             delegate: FileGridItem {
-                                onContextMenuRequested: (x, y) => {
-                                    var pos = contentArea.mapFromItem(null, x, y)
-                                    itemContextMenu.popup(pos.x, pos.y, name, isDir, size, modified, mimeType)
-                                }
+                                onContextMenuRequested: (x, y) =>
+                                    itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
                             }
 
                             MouseArea {
                                 // See the matching comment in the ListView's
                                 // overlay above — kept below the delegates in
                                 // z-order so per-item right-clicks win.
+                                id: gridBackgroundArea
                                 z: -1
                                 anchors.fill: parent
                                 acceptedButtons: Qt.RightButton
                                 onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
-                                onClicked: (mouse) => contextMenu.popup(mouse.x + 20, mouse.y + 20)
+                                onClicked: (mouse) => {
+                                    var scenePos = gridBackgroundArea.mapToItem(null, mouse.x, mouse.y)
+                                    contextMenu.popup(scenePos.x, scenePos.y)
+                                }
                             }
 
                             ScrollBar {
@@ -165,53 +182,57 @@ Window {
                         sourceComponent: window.viewMode === "grid" ? gridComponent : listComponent
                     }
                 }
-
-                ContextMenu {
-                    id: contextMenu
-                    onNewFolderRequested: newFolderDialog.open()
-                }
-
-                NewFolderDialog {
-                    id: newFolderDialog
-                    onAccepted: (name) => fileModel.createFolder(name)
-                }
-
-                ItemContextMenu {
-                    id: itemContextMenu
-                    onOpenRequested: (name) => {
-                        if (itemContextMenu.entryIsDir) {
-                            fileModel.navigate(fileModel.currentPath + "/" + name)
-                        } else {
-                            fileModel.openEntry(name)
-                        }
-                    }
-                    onRenameRequested: (name) => renameDialog.open(name)
-                    onDeleteRequested: (name) => {
-                        contentArea._pendingDeleteName = name
-                        deleteConfirmDialog.open("Move \"" + name + "\" to Trash?")
-                    }
-                    onPropertiesRequested: (name, isDir, size, modified, mimeType) =>
-                        propertiesDialog.open(name, isDir, size, modified, mimeType)
-                }
-
-                RenameDialog {
-                    id: renameDialog
-                    onAccepted: (oldName, newName) => fileModel.renameEntry(oldName, newName)
-                }
-
-                PropertiesDialog {
-                    id: propertiesDialog
-                }
-
-                property string _pendingDeleteName: ""
-
-                ConfirmDialog {
-                    id: deleteConfirmDialog
-                    title: "Move to Trash"
-                    confirmLabel: "Delete"
-                    onConfirmed: fileModel.deleteEntry(contentArea._pendingDeleteName)
-                }
             }
         }
+    }
+
+    // Menus and dialogs are anchored to the whole Window, not just
+    // contentArea — their dimmed backdrop needs to cover the top bar and
+    // sidebar too, not stop at the file listing's edge.
+    ContextMenu {
+        id: contextMenu
+        onNewFolderRequested: newFolderDialog.open()
+        onOpenTerminalRequested: fileModel.openTerminalHere()
+    }
+
+    NewFolderDialog {
+        id: newFolderDialog
+        onAccepted: (name) => fileModel.createFolder(name)
+    }
+
+    ItemContextMenu {
+        id: itemContextMenu
+        onOpenRequested: (name) => {
+            if (itemContextMenu.entryIsDir) {
+                fileModel.navigate(fileModel.currentPath + "/" + name)
+            } else {
+                fileModel.openEntry(name)
+            }
+        }
+        onRenameRequested: (name) => renameDialog.open(name)
+        onDuplicateRequested: (name) => fileModel.duplicateEntry(name)
+        onCopyPathRequested: (name) => clipboardHelper.copyText(fileModel.entryAbsolutePath(name))
+        onDeleteRequested: (name) => {
+            window._pendingDeleteName = name
+            deleteConfirmDialog.open("Move \"" + name + "\" to Trash?")
+        }
+        onPropertiesRequested: (name, isDir, size, modified, mimeType, permissions) =>
+            propertiesDialog.open(name, isDir, size, modified, mimeType, permissions)
+    }
+
+    RenameDialog {
+        id: renameDialog
+        onAccepted: (oldName, newName) => fileModel.renameEntry(oldName, newName)
+    }
+
+    PropertiesDialog {
+        id: propertiesDialog
+    }
+
+    ConfirmDialog {
+        id: deleteConfirmDialog
+        title: "Move to Trash"
+        confirmLabel: "Delete"
+        onConfirmed: fileModel.deleteEntry(window._pendingDeleteName)
     }
 }

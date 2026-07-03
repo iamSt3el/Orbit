@@ -1,4 +1,5 @@
 import QtQuick
+import "../util/format.js" as Format
 import com.filemanager.app 1.0
 
 Item {
@@ -11,6 +12,7 @@ Item {
     required property string iconKey
     required property string modified
     required property string mimeType
+    required property string permissions
 
     signal contextMenuRequested(real x, real y)
 
@@ -68,12 +70,22 @@ Item {
         anchors.rightMargin: 12
         spacing: 16
 
-        Rectangle {
+        Item {
             width: 40
             height: 40
-            radius: Shape.medium
-            color: root.isDir ? Qt.alpha(Color.scheme.primary, 0.12) : "transparent"
             anchors.verticalCenter: parent.verticalCenter
+
+            // The tonal container behind a folder icon is a hover-only
+            // affordance, not a permanent decoration — a constant tinted
+            // box behind every folder row reads as visual noise at list
+            // scale.
+            Rectangle {
+                anchors.fill: parent
+                radius: Shape.medium
+                color: Qt.alpha(Color.scheme.primary, 0.12)
+                opacity: (root.isDir && rowArea.containsMouse) ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+            }
 
             Icon {
                 anchors.centerIn: parent
@@ -99,7 +111,7 @@ Item {
             }
 
             Text {
-                text: root.isDir ? "" : (root.size + " bytes")
+                text: root.isDir ? "" : Format.formatBytes(root.size)
                 visible: text.length > 0
                 color: Color.scheme.surfaceVariantText
                 font.family: Type.bodyMedium.family

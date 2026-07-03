@@ -12,11 +12,14 @@ Item {
     property int entrySize: 0
     property string entryModified: ""
     property string entryMimeType: ""
+    property string entryPermissions: ""
 
     signal openRequested(string name)
     signal renameRequested(string name)
+    signal duplicateRequested(string name)
+    signal copyPathRequested(string name)
     signal deleteRequested(string name)
-    signal propertiesRequested(string name, bool isDir, int size, string modified, string mimeType)
+    signal propertiesRequested(string name, bool isDir, int size, string modified, string mimeType, string permissions)
 
     anchors.fill: parent
     visible: false
@@ -25,16 +28,19 @@ Item {
     readonly property var _items: [
         { icon: "open_in_new", label: "Open" },
         { icon: "edit", label: "Rename" },
-        { icon: "delete", label: "Delete" },
+        { icon: "content_copy", label: "Duplicate" },
+        { icon: "link", label: "Copy Path" },
+        { icon: "delete", label: "Delete", destructive: true },
         { icon: "info", label: "Properties" }
     ]
 
-    function popup(x, y, name, isDir, size, modified, mimeType) {
+    function popup(x, y, name, isDir, size, modified, mimeType, permissions) {
         root.entryName = name
         root.entryIsDir = isDir
         root.entrySize = size
         root.entryModified = modified
         root.entryMimeType = mimeType
+        root.entryPermissions = permissions
         menu.x = Math.min(x, root.width - menu.width)
         menu.y = Math.min(y, root.height - menu.height)
         visible = true
@@ -71,8 +77,20 @@ Item {
                     required property int index
                     readonly property bool isFirst: index === 0
                     readonly property bool isLast: index === root._items.length - 1
+                    readonly property bool destructive: !!menuItem.modelData.destructive
+                    readonly property color _labelColor: menuItem.destructive ? Color.scheme.error : Color.scheme.surfaceText
                     width: menu.width
                     height: 44
+
+                    // A thin divider before the destructive action, separating
+                    // it from the routine actions above it.
+                    Rectangle {
+                        visible: menuItem.destructive
+                        anchors.top: parent.top
+                        width: parent.width
+                        height: 1
+                        color: Color.scheme.outlineVariant
+                    }
 
                     Rectangle {
                         anchors.fill: parent
@@ -97,13 +115,13 @@ Item {
                         Icon {
                             content: menuItem.modelData.icon
                             iconSize: 20
-                            color: Color.scheme.surfaceText
+                            color: menuItem._labelColor
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
                         Text {
                             text: menuItem.modelData.label
-                            color: Color.scheme.surfaceText
+                            color: menuItem._labelColor
                             font.family: Type.bodyLarge.family
                             font.pixelSize: Type.bodyLarge.size
                             anchors.verticalCenter: parent.verticalCenter
@@ -120,9 +138,11 @@ Item {
                             switch (menuItem.modelData.label) {
                             case "Open": root.openRequested(root.entryName); break
                             case "Rename": root.renameRequested(root.entryName); break
+                            case "Duplicate": root.duplicateRequested(root.entryName); break
+                            case "Copy Path": root.copyPathRequested(root.entryName); break
                             case "Delete": root.deleteRequested(root.entryName); break
                             case "Properties":
-                                root.propertiesRequested(root.entryName, root.entryIsDir, root.entrySize, root.entryModified, root.entryMimeType)
+                                root.propertiesRequested(root.entryName, root.entryIsDir, root.entrySize, root.entryModified, root.entryMimeType, root.entryPermissions)
                                 break
                             }
                         }
