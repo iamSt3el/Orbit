@@ -3,7 +3,24 @@ use cxx_qt_build::{CxxQtBuilder, QmlFile, QmlModule};
 fn main() {
     CxxQtBuilder::new_qml_module(
         QmlModule::new("com.filemanager.app")
-            .qml_files(["qml/main.qml"])
+            .qml_files([
+                "qml/main.qml",
+                "qml/shapes/material-shapes.js",
+                "qml/shapes/MorphShape.qml",
+                "qml/shapes/geometry/offset.js",
+                "qml/shapes/graphics/matrix.js",
+                "qml/shapes/shapes/corner-rounding.js",
+                "qml/shapes/shapes/cubic.js",
+                "qml/shapes/shapes/feature.js",
+                "qml/shapes/shapes/feature-mapping.js",
+                "qml/shapes/shapes/float-mapping.js",
+                "qml/shapes/shapes/morph.js",
+                "qml/shapes/shapes/point.js",
+                "qml/shapes/shapes/polygon-measure.js",
+                "qml/shapes/shapes/rounded-corner.js",
+                "qml/shapes/shapes/rounded-polygon.js",
+                "qml/shapes/shapes/utils.js",
+            ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Shape.qml").singleton(true))
