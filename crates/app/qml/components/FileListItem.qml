@@ -18,21 +18,40 @@ Item {
     width: ListView.view ? ListView.view.width : 0
     height: 60
 
+    // Reset by the ListView on delegate reuse (Qt Quick recycles delegate
+    // items on scroll when ListView.reuseItems is true — hover state is
+    // otherwise left stale on the recycled item since repositioning it
+    // under the cursor doesn't generate a real mouse-move event).
+    ListView.onReused: {
+        rowArea.hoverEnabled = false
+        rowArea.hoverEnabled = true
+        deleteArea.hoverEnabled = false
+        deleteArea.hoverEnabled = true
+    }
+
+    // Lightweight hover highlight: a constant-color rectangle whose opacity
+    // is animated, not its RGBA color. Animating a Behavior on `color` from
+    // "transparent" to an opaque tint interpolates alpha and RGB together,
+    // which visibly flashes through an intermediate near-black state before
+    // settling — animating opacity on a fixed color avoids that entirely,
+    // and is cheaper (no OpacityMask/layer compositing per row, which is
+    // expensive to redo on every delegate during fast scrolling).
     Rectangle {
         anchors.fill: parent
-        color: _itemArea.containsMouse ? Elevation.surfaceAt(1) : "transparent"
         radius: Shape.small
+        color: Elevation.surfaceAt(1)
+        opacity: rowArea.containsMouse ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+    }
 
-        Behavior on color { ColorAnimation { duration: Motion.standard.duration } }
-
-        Ripple {
-            id: _itemArea
-            anchors.fill: parent
-            radius: parent.radius
-            onClicked: {
-                if (root.isDir) {
-                    root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
-                }
+    MouseArea {
+        id: rowArea
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: {
+            if (root.isDir) {
+                root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
             }
         }
     }
@@ -84,11 +103,15 @@ Item {
         }
 
         Rectangle {
+            id: deleteBg
             width: 40
             height: 40
             radius: Shape.full
-            color: "transparent"
+            color: Elevation.surfaceAt(2)
+            opacity: deleteArea.containsMouse ? 1 : 0
             anchors.verticalCenter: parent.verticalCenter
+
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
             Icon {
                 anchors.centerIn: parent
@@ -97,9 +120,11 @@ Item {
                 color: Color.scheme.surfaceVariantText
             }
 
-            Ripple {
+            MouseArea {
+                id: deleteArea
                 anchors.fill: parent
-                radius: parent.radius
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: root.fileModel.deleteEntry(root.name)
             }
         }

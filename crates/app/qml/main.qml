@@ -18,12 +18,22 @@ Window {
             : "/home")
     }
 
+    function parentPath(path) {
+        var idx = path.lastIndexOf("/")
+        if (idx <= 0) {
+            return "/"
+        }
+        return path.substring(0, idx)
+    }
+
     Column {
         anchors.fill: parent
 
         TopAppBar {
             width: parent.width
             title: fileModel.currentPath ? fileModel.currentPath : ""
+            showBackButton: fileModel.currentPath && fileModel.currentPath !== "/"
+            onBackClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
         }
 
         Item {
@@ -108,6 +118,8 @@ Window {
                         anchors.margins: 4
                         model: fileModel
                         spacing: 2
+                        reuseItems: true
+                        cacheBuffer: 400
                         delegate: FileListItem {}
                     }
                 }
