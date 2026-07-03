@@ -68,6 +68,9 @@ Item {
                 delegate: Item {
                     id: menuItem
                     required property var modelData
+                    required property int index
+                    readonly property bool isFirst: index === 0
+                    readonly property bool isLast: index === root._items.length - 1
                     width: menu.width
                     height: 44
 
@@ -76,6 +79,14 @@ Item {
                         color: Elevation.surfaceAt(1)
                         opacity: _itemArea.containsMouse ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                        // Matches the outer menu's rounded top/bottom corners —
+                        // Rectangle's `clip: true` only clips to the axis-aligned
+                        // bounding box, not the rounded shape, so without this the
+                        // hover highlight pokes out square-cornered.
+                        topLeftRadius: menuItem.isFirst ? menu.radius : 0
+                        topRightRadius: menuItem.isFirst ? menu.radius : 0
+                        bottomLeftRadius: menuItem.isLast ? menu.radius : 0
+                        bottomRightRadius: menuItem.isLast ? menu.radius : 0
                     }
 
                     Row {

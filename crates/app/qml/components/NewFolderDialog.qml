@@ -36,12 +36,13 @@ Item {
     Rectangle {
         id: dialog
         width: 320
-        height: 140
+        height: _column.implicitHeight + 40
         radius: Shape.extraLarge
         color: Elevation.surfaceAt(3)
         anchors.centerIn: parent
 
         Column {
+            id: _column
             anchors.fill: parent
             anchors.margins: 20
             spacing: 16

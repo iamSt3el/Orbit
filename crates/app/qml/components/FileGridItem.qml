@@ -21,8 +21,6 @@ Item {
     GridView.onReused: {
         cellArea.hoverEnabled = false
         cellArea.hoverEnabled = true
-        deleteArea.hoverEnabled = false
-        deleteArea.hoverEnabled = true
     }
 
     Rectangle {
@@ -89,34 +87,6 @@ Item {
                 } else if (root.isDir) {
                     root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
                 }
-            }
-        }
-
-        Rectangle {
-            width: 28
-            height: 28
-            radius: Shape.full
-            color: Elevation.surfaceAt(3)
-            opacity: (cellArea.containsMouse || deleteArea.containsMouse) ? 1 : 0
-            anchors.top: parent.top
-            anchors.right: parent.right
-            anchors.margins: 6
-
-            Behavior on opacity { NumberAnimation { duration: 120 } }
-
-            Icon {
-                anchors.centerIn: parent
-                content: "delete"
-                iconSize: 16
-                color: Color.scheme.surfaceVariantText
-            }
-
-            MouseArea {
-                id: deleteArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.fileModel.deleteEntry(root.name)
             }
         }
     }

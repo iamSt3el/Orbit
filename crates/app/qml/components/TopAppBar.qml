@@ -58,7 +58,7 @@ Rectangle {
     Text {
         anchors.left: backButton.visible ? backButton.right : parent.left
         anchors.leftMargin: backButton.visible ? 12 : 24
-        anchors.right: viewToggle.left
+        anchors.right: themeToggle.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
         text: root.title
@@ -67,6 +67,41 @@ Rectangle {
         font.weight: Type.titleLargeEmphasized.weight
         font.pixelSize: Type.titleLargeEmphasized.size
         elide: Text.ElideMiddle
+    }
+
+    // Dark/light theme toggle — same hover-circle pattern as the back
+    // button (icon is a sibling of the opacity-animated highlight, not a
+    // child, so it doesn't fade with it).
+    Item {
+        id: themeToggle
+        width: 48
+        height: 48
+        anchors.right: viewToggle.left
+        anchors.rightMargin: 8
+        anchors.verticalCenter: parent.verticalCenter
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Shape.full
+            color: Elevation.surfaceAt(3)
+            opacity: _themeArea.containsMouse ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        }
+
+        Icon {
+            anchors.centerIn: parent
+            content: Color.darkMode ? "light_mode" : "dark_mode"
+            iconSize: 22
+            color: Color.scheme.surfaceText
+        }
+
+        MouseArea {
+            id: _themeArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: Color.darkMode = !Color.darkMode
+        }
     }
 
     ButtonGroup {

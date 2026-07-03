@@ -186,7 +186,10 @@ Window {
                         }
                     }
                     onRenameRequested: (name) => renameDialog.open(name)
-                    onDeleteRequested: (name) => fileModel.deleteEntry(name)
+                    onDeleteRequested: (name) => {
+                        contentArea._pendingDeleteName = name
+                        deleteConfirmDialog.open("Move \"" + name + "\" to Trash?")
+                    }
                     onPropertiesRequested: (name, isDir, size, modified, mimeType) =>
                         propertiesDialog.open(name, isDir, size, modified, mimeType)
                 }
@@ -198,6 +201,15 @@ Window {
 
                 PropertiesDialog {
                     id: propertiesDialog
+                }
+
+                property string _pendingDeleteName: ""
+
+                ConfirmDialog {
+                    id: deleteConfirmDialog
+                    title: "Move to Trash"
+                    confirmLabel: "Delete"
+                    onConfirmed: fileModel.deleteEntry(contentArea._pendingDeleteName)
                 }
             }
         }

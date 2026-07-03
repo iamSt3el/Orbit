@@ -54,6 +54,22 @@ pub mod qobject {
         #[inherit]
         #[cxx_name = "endResetModel"]
         fn end_reset_model(self: Pin<&mut FileListModel>);
+
+        #[inherit]
+        #[cxx_name = "beginInsertRows"]
+        fn begin_insert_rows(self: Pin<&mut FileListModel>, parent: &QModelIndex, first: i32, last: i32);
+
+        #[inherit]
+        #[cxx_name = "endInsertRows"]
+        fn end_insert_rows(self: Pin<&mut FileListModel>);
+
+        #[inherit]
+        #[cxx_name = "beginRemoveRows"]
+        fn begin_remove_rows(self: Pin<&mut FileListModel>, parent: &QModelIndex, first: i32, last: i32);
+
+        #[inherit]
+        #[cxx_name = "endRemoveRows"]
+        fn end_remove_rows(self: Pin<&mut FileListModel>);
     }
 
     unsafe extern "RustQt" {
@@ -207,8 +223,7 @@ impl qobject::FileListModel {
         {
             eprintln!("create_folder failed: {e}");
         }
-        let refresh_path = QString::from(&current.display().to_string());
-        self.as_mut().navigate(&refresh_path);
+        self.as_mut().refresh_entries_diff();
     }
 
     fn rename_entry(mut self: core::pin::Pin<&mut Self>, old_name: &QString, new_name: &QString) {
@@ -217,8 +232,7 @@ impl qobject::FileListModel {
         if let Err(e) = runtime().block_on(fm_core::ops::rename(&target, &new_name.to_string())) {
             eprintln!("rename failed: {e}");
         }
-        let refresh_path = QString::from(&current.display().to_string());
-        self.as_mut().navigate(&refresh_path);
+        self.as_mut().refresh_entries_diff();
     }
 
     fn delete_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
@@ -227,8 +241,64 @@ impl qobject::FileListModel {
         if let Err(e) = runtime().block_on(fm_core::trash::move_to_trash(&target)) {
             eprintln!("delete_entry failed: {e}");
         }
-        let refresh_path = QString::from(&current.display().to_string());
-        self.as_mut().navigate(&refresh_path);
+        self.as_mut().refresh_entries_diff();
+    }
+
+    /// Re-lists the current directory and reconciles the model against the
+    /// fresh listing with row-level insert/remove operations instead of a
+    /// full reset, so a single create/rename/delete only disturbs the rows
+    /// that actually changed (list position, scroll offset, and hover state
+    /// of every other row survive untouched).
+    fn refresh_entries_diff(mut self: core::pin::Pin<&mut Self>) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let new_entries = runtime().block_on(gather_entries(&current));
+        self.as_mut().apply_entries_diff(new_entries);
+    }
+
+    fn apply_entries_diff(mut self: core::pin::Pin<&mut Self>, new_entries: Vec<fm_core::FileEntry>) {
+        fn same_entry(a: &fm_core::FileEntry, b: &fm_core::FileEntry) -> bool {
+            a.name == b.name && a.is_dir == b.is_dir
+        }
+
+        let old_entries = self.entries.clone();
+        let parent = cxx_qt_lib::QModelIndex::default();
+
+        // Phase 1: remove rows whose entry no longer exists, highest index
+        // first so earlier indices stay valid as we go.
+        let mut remove_indices: Vec<usize> = old_entries
+            .iter()
+            .enumerate()
+            .filter(|(_, old)| !new_entries.iter().any(|n| same_entry(n, old)))
+            .map(|(i, _)| i)
+            .collect();
+        remove_indices.sort_unstable();
+        for &idx in remove_indices.iter().rev() {
+            self.as_mut()
+                .begin_remove_rows(&parent, idx as i32, idx as i32);
+            self.as_mut().rust_mut().entries.remove(idx);
+            self.as_mut().end_remove_rows();
+        }
+
+        // Phase 2: insert rows that are new, left to right. After phase 1,
+        // the model holds exactly the entries common to old and new, in the
+        // same relative order as new_entries — so each new-only entry's
+        // final index equals its index in new_entries.
+        for (idx, new_entry) in new_entries.iter().enumerate() {
+            let exists = self
+                .entries
+                .get(idx)
+                .map(|e| same_entry(e, new_entry))
+                .unwrap_or(false);
+            if !exists {
+                self.as_mut()
+                    .begin_insert_rows(&parent, idx as i32, idx as i32);
+                self.as_mut()
+                    .rust_mut()
+                    .entries
+                    .insert(idx, new_entry.clone());
+                self.as_mut().end_insert_rows();
+            }
+        }
     }
 
     fn open_entry(self: core::pin::Pin<&mut Self>, name: &QString) {

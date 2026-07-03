@@ -29,8 +29,6 @@ Item {
     ListView.onReused: {
         rowArea.hoverEnabled = false
         rowArea.hoverEnabled = true
-        deleteArea.hoverEnabled = false
-        deleteArea.hoverEnabled = true
     }
 
     // Lightweight hover highlight: a constant-color rectangle whose opacity
@@ -86,7 +84,7 @@ Item {
         }
 
         Column {
-            width: parent.width - 40 - 40 - 32
+            width: parent.width - 40 - 16
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
 
@@ -107,33 +105,6 @@ Item {
                 font.family: Type.bodyMedium.family
                 font.weight: Type.bodyMedium.weight
                 font.pixelSize: Type.bodyMedium.size
-            }
-        }
-
-        Rectangle {
-            id: deleteBg
-            width: 40
-            height: 40
-            radius: Shape.full
-            color: Elevation.surfaceAt(2)
-            opacity: deleteArea.containsMouse ? 1 : 0
-            anchors.verticalCenter: parent.verticalCenter
-
-            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-
-            Icon {
-                anchors.centerIn: parent
-                content: "delete"
-                iconSize: 20
-                color: Color.scheme.surfaceVariantText
-            }
-
-            MouseArea {
-                id: deleteArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.fileModel.deleteEntry(root.name)
             }
         }
     }
