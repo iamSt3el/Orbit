@@ -77,13 +77,17 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 2
 
-        Rectangle {
+        Item {
             width: 40
             height: 40
-            radius: Shape.full
-            color: root.viewMode === "list" ? Color.scheme.secondaryContainer : "transparent"
 
-            Behavior on color { ColorAnimation { duration: 150 } }
+            Rectangle {
+                anchors.fill: parent
+                radius: Shape.full
+                color: Color.scheme.secondaryContainer
+                opacity: root.viewMode === "list" ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            }
 
             Icon {
                 anchors.centerIn: parent
@@ -100,13 +104,17 @@ Rectangle {
             }
         }
 
-        Rectangle {
+        Item {
             width: 40
             height: 40
-            radius: Shape.full
-            color: root.viewMode === "grid" ? Color.scheme.secondaryContainer : "transparent"
 
-            Behavior on color { ColorAnimation { duration: 150 } }
+            Rectangle {
+                anchors.fill: parent
+                radius: Shape.full
+                color: Color.scheme.secondaryContainer
+                opacity: root.viewMode === "grid" ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            }
 
             Icon {
                 anchors.centerIn: parent

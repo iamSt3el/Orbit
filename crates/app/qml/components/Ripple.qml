@@ -38,8 +38,13 @@ Item {
         topRightRadius:    root.topRightRadius
         bottomLeftRadius:  root.bottomLeftRadius
         bottomRightRadius: root.bottomRightRadius
-        color: _mouse.containsMouse ? root.hoverColor : "transparent"
-        Behavior on color { ColorAnimation { duration: 150 } }
+        // Constant color, animated opacity — not a Behavior on `color`
+        // itself. Animating color from "transparent" to an opaque tint
+        // cross-interpolates alpha and RGB together, which visibly flashes
+        // through an intermediate near-black state before settling.
+        color: root.hoverColor
+        opacity: _mouse.containsMouse ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 150 } }
     }
 
     Item {
