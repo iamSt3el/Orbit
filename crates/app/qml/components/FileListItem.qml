@@ -27,6 +27,11 @@ Item {
             id: _itemArea
             anchors.fill: parent
             radius: parent.radius
+            onClicked: {
+                if (root.isDir) {
+                    root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
+                }
+            }
         }
     }
 
