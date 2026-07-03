@@ -14,7 +14,7 @@ Rectangle {
 
     property bool searching: false
 
-    height: 40
+    implicitHeight: 40
     radius: 12
     color: Color.scheme.surfaceContainerHighest
     border.width: 1

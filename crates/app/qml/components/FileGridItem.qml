@@ -13,6 +13,11 @@ Item {
     required property string mimeType
     required property string permissions
 
+    // Overridable from the view-options menu; defaults preserve the
+    // original fixed sizing.
+    property int iconSize: 32
+    property int iconContainerSize: 56
+
     signal contextMenuRequested(real x, real y)
 
     readonly property var fileModel: GridView.view ? GridView.view.model : null
@@ -49,8 +54,8 @@ Item {
             spacing: 8
 
             Item {
-                width: 56
-                height: 56
+                width: root.iconContainerSize
+                height: root.iconContainerSize
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 // Hover-only tonal container, matching FileListItem — see
@@ -66,7 +71,7 @@ Item {
                 Icon {
                     anchors.centerIn: parent
                     content: root.isDir ? "folder" : "description"
-                    iconSize: 32
+                    iconSize: root.iconSize
                     color: root.isDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
                 }
             }

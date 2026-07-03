@@ -14,6 +14,14 @@ Window {
     property string viewMode: "list" // "list" | "grid"
     property string _pendingDeleteName: ""
 
+    property string iconSizeLevel: "medium" // "small" | "medium" | "large"
+    readonly property var iconSizeProfiles: ({
+        small: { listIcon: 18, listContainer: 32, gridIcon: 24, gridContainer: 44, gridCell: 104, gridMinWidth: 90 },
+        medium: { listIcon: 22, listContainer: 40, gridIcon: 32, gridContainer: 56, gridCell: 132, gridMinWidth: 110 },
+        large: { listIcon: 28, listContainer: 48, gridIcon: 40, gridContainer: 68, gridCell: 160, gridMinWidth: 132 }
+    })
+    readonly property var activeIconProfile: iconSizeProfiles[iconSizeLevel] || iconSizeProfiles.medium
+
     FileListModel {
         id: fileModel
 
@@ -115,6 +123,7 @@ Window {
                         onBackClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
                         onListViewRequested: window.viewMode = "list"
                         onGridViewRequested: window.viewMode = "grid"
+                        onOptionsRequested: (x, y) => viewOptionsMenu.popup(x, y)
                     }
 
                     Item {
@@ -137,6 +146,8 @@ Window {
                                 cacheBuffer: 400
                                 acceptedButtons: Qt.NoButton
                                 delegate: FileListItem {
+                                    iconSize: window.activeIconProfile.listIcon
+                                    iconContainerSize: window.activeIconProfile.listContainer
                                     onContextMenuRequested: (x, y) =>
                                         itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
                                 }
@@ -177,14 +188,14 @@ Window {
                                 anchors.margins: 4
                                 anchors.rightMargin: 14
                                 model: fileModel
-                                readonly property int minCellWidth: 110
+                                readonly property int minCellWidth: window.activeIconProfile.gridMinWidth
                                 readonly property int columns: Math.max(1, Math.floor(width / minCellWidth))
                                 // Not Math.floor()'d — GridView's cellWidth accepts a
                                 // fractional value fine, and truncating it here would
                                 // leave up to (columns - 1) px of unfilled space on
                                 // the right, which is exactly the bug this is fixing.
                                 cellWidth: width / columns
-                                cellHeight: 132
+                                cellHeight: window.activeIconProfile.gridCell
                                 reuseItems: true
                                 cacheBuffer: 400
                                 acceptedButtons: Qt.NoButton
@@ -195,6 +206,8 @@ Window {
                                 // stale and the row short of the panel's right edge.
                                 onWidthChanged: forceLayout()
                                 delegate: FileGridItem {
+                                    iconSize: window.activeIconProfile.gridIcon
+                                    iconContainerSize: window.activeIconProfile.gridContainer
                                     onContextMenuRequested: (x, y) =>
                                         itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
                                 }
@@ -246,6 +259,12 @@ Window {
     NewFolderDialog {
         id: newFolderDialog
         onAccepted: (name) => fileModel.createFolder(name)
+    }
+
+    ViewOptionsMenu {
+        id: viewOptionsMenu
+        fileModel: fileModel
+        onIconSizeSelected: (level) => window.iconSizeLevel = level
     }
 
     ItemContextMenu {

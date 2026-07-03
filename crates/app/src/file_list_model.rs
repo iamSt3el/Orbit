@@ -121,6 +121,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setSearchQuery"]
         fn set_search_query(self: Pin<&mut FileListModel>, query: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "setShowHidden"]
+        fn set_show_hidden(self: Pin<&mut FileListModel>, show_hidden: bool);
+
+        #[qinvokable]
+        #[cxx_name = "setSortKey"]
+        fn set_sort_key(self: Pin<&mut FileListModel>, sort_key: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "setSortAscending"]
+        fn set_sort_ascending(self: Pin<&mut FileListModel>, ascending: bool);
     }
 }
 
@@ -145,6 +157,9 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 pub struct FileListModelRust {
     entries: Vec<fm_core::FileEntry>,
     search_query: QString,
+    show_hidden: bool,
+    sort_key: QString,
+    sort_ascending: bool,
     current_path: QString,
     home_path: QString,
     downloads_path: QString,
@@ -161,6 +176,9 @@ impl Default for FileListModelRust {
         Self {
             entries: Vec::new(),
             search_query: QString::from(""),
+            show_hidden: false,
+            sort_key: QString::from("name"),
+            sort_ascending: true,
             current_path: QString::from(""),
             home_path: path_or_empty(fm_core::paths::home_dir()),
             downloads_path: path_or_empty(fm_core::paths::download_dir()),
@@ -195,41 +213,60 @@ async fn gather_entries(path: &std::path::Path) -> Vec<fm_core::FileEntry> {
             entries.push(entry);
         }
     }
-    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.cmp(&b.name),
-    });
     entries
 }
 
-/// Indices into `entries` matching the current search query (all of them,
-/// in order, when the query is empty). Recomputed on demand rather than
-/// cached — directory sizes here are small enough (hundreds to low
-/// thousands of entries) that a fresh linear scan per `data()`/`row_count()`
-/// call is not a measurable cost, and it keeps the create/rename/delete
-/// diff logic below untouched by search entirely.
-fn matching_indices(entries: &[fm_core::FileEntry], query: &str) -> Vec<usize> {
-    if query.is_empty() {
-        return (0..entries.len()).collect();
-    }
+/// Folders always sort before files, regardless of the chosen key — only
+/// the secondary ordering (and its direction) is user-configurable.
+fn sort_entries(entries: &mut [fm_core::FileEntry], sort_key: &str, ascending: bool) {
+    entries.sort_by(|a, b| {
+        let dir_order = match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        };
+        if dir_order != std::cmp::Ordering::Equal {
+            return dir_order;
+        }
+        let cmp = match sort_key {
+            "size" => a.size.cmp(&b.size),
+            "modified" => a.modified.cmp(&b.modified),
+            "type" => a.mime_type.cmp(&b.mime_type),
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        };
+        if ascending {
+            cmp
+        } else {
+            cmp.reverse()
+        }
+    });
+}
+
+/// Indices into `entries` matching the current search query and hidden-file
+/// setting (all of them, in order, when nothing is filtered). Recomputed on
+/// demand rather than cached — directory sizes here are small enough
+/// (hundreds to low thousands of entries) that a fresh linear scan per
+/// `data()`/`row_count()` call is not a measurable cost, and it keeps the
+/// create/rename/delete diff logic below untouched by filtering entirely.
+fn matching_indices(entries: &[fm_core::FileEntry], query: &str, show_hidden: bool) -> Vec<usize> {
     let query = query.to_lowercase();
     entries
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.name.to_lowercase().contains(&query))
+        .filter(|(_, e)| show_hidden || !e.name.starts_with('.'))
+        .filter(|(_, e)| query.is_empty() || e.name.to_lowercase().contains(&query))
         .map(|(i, _)| i)
         .collect()
 }
 
 impl qobject::FileListModel {
     fn row_count(&self, _parent: &cxx_qt_lib::QModelIndex) -> i32 {
-        matching_indices(&self.entries, &self.search_query.to_string()).len() as i32
+        matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden).len() as i32
     }
 
     fn data(&self, index: &cxx_qt_lib::QModelIndex, role: i32) -> QVariant {
         let row = index.row();
-        let matching = matching_indices(&self.entries, &self.search_query.to_string());
+        let matching = matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden);
         if row < 0 || row as usize >= matching.len() {
             return QVariant::default();
         }
@@ -260,7 +297,12 @@ impl qobject::FileListModel {
 
     fn navigate(mut self: core::pin::Pin<&mut Self>, path: &QString) {
         let path_buf = PathBuf::from(path.to_string());
-        let entries = runtime().block_on(gather_entries(&path_buf));
+        let mut entries = runtime().block_on(gather_entries(&path_buf));
+        sort_entries(
+            &mut entries,
+            &self.sort_key.to_string(),
+            self.sort_ascending,
+        );
 
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().entries = entries;
@@ -275,6 +317,29 @@ impl qobject::FileListModel {
     fn set_search_query(mut self: core::pin::Pin<&mut Self>, query: &QString) {
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().search_query = query.clone();
+        self.as_mut().end_reset_model();
+    }
+
+    fn set_show_hidden(mut self: core::pin::Pin<&mut Self>, show_hidden: bool) {
+        self.as_mut().begin_reset_model();
+        self.as_mut().rust_mut().show_hidden = show_hidden;
+        self.as_mut().end_reset_model();
+    }
+
+    fn set_sort_key(mut self: core::pin::Pin<&mut Self>, sort_key: &QString) {
+        self.as_mut().begin_reset_model();
+        self.as_mut().rust_mut().sort_key = sort_key.clone();
+        let ascending = self.sort_ascending;
+        let key = self.sort_key.to_string();
+        sort_entries(&mut self.as_mut().rust_mut().entries, &key, ascending);
+        self.as_mut().end_reset_model();
+    }
+
+    fn set_sort_ascending(mut self: core::pin::Pin<&mut Self>, ascending: bool) {
+        self.as_mut().begin_reset_model();
+        self.as_mut().rust_mut().sort_ascending = ascending;
+        let key = self.sort_key.to_string();
+        sort_entries(&mut self.as_mut().rust_mut().entries, &key, ascending);
         self.as_mut().end_reset_model();
     }
 
@@ -313,7 +378,12 @@ impl qobject::FileListModel {
     /// of every other row survive untouched).
     fn refresh_entries_diff(mut self: core::pin::Pin<&mut Self>) {
         let current = PathBuf::from(self.current_path.to_string());
-        let new_entries = runtime().block_on(gather_entries(&current));
+        let mut new_entries = runtime().block_on(gather_entries(&current));
+        sort_entries(
+            &mut new_entries,
+            &self.sort_key.to_string(),
+            self.sort_ascending,
+        );
         self.as_mut().apply_entries_diff(new_entries);
     }
 
@@ -322,11 +392,13 @@ impl qobject::FileListModel {
             a.name == b.name && a.is_dir == b.is_dir
         }
 
-        if !self.search_query.to_string().is_empty() {
+        if !self.search_query.to_string().is_empty() || !self.show_hidden {
             // The row-level diff below assumes model rows map 1:1 onto
             // `entries` indices, which only holds when nothing is
-            // filtered out — fall back to a plain reset while a search is
-            // active rather than computing wrong row indices.
+            // filtered out — fall back to a plain reset while a search or
+            // the (default-on) hidden-file filter is active, rather than
+            // computing wrong row indices. This means the smooth per-row
+            // diff mainly kicks in once "show hidden files" is turned on.
             self.as_mut().begin_reset_model();
             self.as_mut().rust_mut().entries = new_entries;
             self.as_mut().end_reset_model();

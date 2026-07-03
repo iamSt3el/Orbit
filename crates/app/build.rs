@@ -32,6 +32,7 @@ fn main() {
                 "qml/components/FileGridItem.qml",
                 "qml/components/TopAppBar.qml",
                 "qml/components/PathBar.qml",
+                "qml/components/ViewOptionsMenu.qml",
                 "qml/components/ScrollBar.qml",
                 "qml/components/Sidebar.qml",
                 "qml/components/ContextMenu.qml",

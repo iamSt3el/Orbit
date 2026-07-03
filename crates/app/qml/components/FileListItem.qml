@@ -14,6 +14,11 @@ Item {
     required property string mimeType
     required property string permissions
 
+    // Overridable from the view-options menu; defaults preserve the
+    // original fixed sizing.
+    property int iconSize: 22
+    property int iconContainerSize: 40
+
     signal contextMenuRequested(real x, real y)
 
     // The containing ListView's model (the FileListModel instance), read via
@@ -71,8 +76,8 @@ Item {
         spacing: 16
 
         Item {
-            width: 40
-            height: 40
+            width: root.iconContainerSize
+            height: root.iconContainerSize
             anchors.verticalCenter: parent.verticalCenter
 
             // The tonal container behind a folder icon is a hover-only
@@ -90,13 +95,13 @@ Item {
             Icon {
                 anchors.centerIn: parent
                 content: root.isDir ? "folder" : "description"
-                iconSize: 22
+                iconSize: root.iconSize
                 color: root.isDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
             }
         }
 
         Column {
-            width: parent.width - 40 - 16
+            width: parent.width - root.iconContainerSize - 16
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
 
