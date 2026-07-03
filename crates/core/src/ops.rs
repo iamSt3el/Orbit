@@ -40,3 +40,23 @@ pub fn copy<'a>(
         }
     })
 }
+
+pub async fn move_entry(src: &Path, dst: &Path) -> io::Result<()> {
+    match tokio::fs::rename(src, dst).await {
+        Ok(()) => Ok(()),
+        Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
+            copy(src, dst).await?;
+            remove_all(src).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn remove_all(path: &Path) -> io::Result<()> {
+    let metadata = tokio::fs::metadata(path).await?;
+    if metadata.is_dir() {
+        tokio::fs::remove_dir_all(path).await
+    } else {
+        tokio::fs::remove_file(path).await
+    }
+}

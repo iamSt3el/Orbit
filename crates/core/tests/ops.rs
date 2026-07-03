@@ -67,3 +67,30 @@ async fn copy_duplicates_a_directory_tree() {
     );
     assert!(src.exists(), "copy must not remove the source");
 }
+
+#[tokio::test]
+async fn move_entry_relocates_a_file_within_same_filesystem() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("a.txt");
+    fs::write(&src, b"hello").unwrap();
+    let dst = dir.path().join("b.txt");
+
+    ops::move_entry(&src, &dst).await.unwrap();
+
+    assert!(!src.exists());
+    assert_eq!(fs::read_to_string(&dst).unwrap(), "hello");
+}
+
+#[tokio::test]
+async fn move_entry_relocates_a_directory_within_same_filesystem() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("srcdir");
+    fs::create_dir(&src).unwrap();
+    fs::write(src.join("inner.txt"), b"x").unwrap();
+    let dst = dir.path().join("dstdir");
+
+    ops::move_entry(&src, &dst).await.unwrap();
+
+    assert!(!src.exists());
+    assert_eq!(fs::read_to_string(dst.join("inner.txt")).unwrap(), "x");
+}
