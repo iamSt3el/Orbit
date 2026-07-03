@@ -114,6 +114,7 @@ Window {
                             anchors.fill: parent
                             anchors.margins: 4
                             anchors.rightMargin: 14
+                            model: fileModel
                             readonly property int minCellWidth: 110
                             cellWidth: width / Math.max(1, Math.floor(width / minCellWidth))
                             cellHeight: 120
