@@ -24,6 +24,7 @@ fn main() {
                 "qml/components/Icon.qml",
                 "qml/components/Button.qml",
                 "qml/components/FileListItem.qml",
+                "qml/components/FileGridItem.qml",
                 "qml/components/TopAppBar.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))

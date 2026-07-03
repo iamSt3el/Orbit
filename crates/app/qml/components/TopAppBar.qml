@@ -6,54 +6,121 @@ Rectangle {
 
     property string title: ""
     property bool showBackButton: false
+    property string viewMode: "list" // "list" | "grid"
     signal backClicked
+    signal listViewRequested
+    signal gridViewRequested
 
-    height: 64
+    height: 72
     color: Elevation.surfaceAt(2)
+    topLeftRadius: 0
+    topRightRadius: 0
+    bottomLeftRadius: Shape.large
+    bottomRightRadius: Shape.large
 
-    Row {
+    // Back button — the icon itself is a sibling of the hover-highlight
+    // circle, not its child, so it stays visible when the highlight's
+    // opacity is 0 (an icon nested inside an opacity-animated parent
+    // fades with it, which made the button invisible until hovered).
+    Item {
+        id: backButton
+        width: 48
+        height: 48
         anchors.left: parent.left
-        anchors.leftMargin: 8
+        anchors.leftMargin: 12
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 4
+        visible: root.showBackButton
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Shape.full
+            color: Elevation.surfaceAt(3)
+            opacity: _backArea.containsMouse ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        }
+
+        Icon {
+            anchors.centerIn: parent
+            content: "arrow_back"
+            iconSize: 22
+            color: Color.scheme.surfaceText
+        }
+
+        MouseArea {
+            id: _backArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.backClicked()
+        }
+    }
+
+    Text {
+        anchors.left: backButton.visible ? backButton.right : parent.left
+        anchors.leftMargin: backButton.visible ? 8 : 20
+        anchors.right: viewToggle.left
+        anchors.rightMargin: 12
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.title
+        color: Color.scheme.surfaceText
+        font.family: Type.titleLargeEmphasized.family
+        font.weight: Type.titleLargeEmphasized.weight
+        font.pixelSize: Type.titleLargeEmphasized.size
+        elide: Text.ElideMiddle
+    }
+
+    // Segmented list/grid view toggle.
+    Row {
+        id: viewToggle
+        anchors.right: parent.right
+        anchors.rightMargin: 12
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 2
 
         Rectangle {
             width: 40
             height: 40
             radius: Shape.full
-            color: Elevation.surfaceAt(3)
-            opacity: root.showBackButton && _backArea.containsMouse ? 1 : 0
-            anchors.verticalCenter: parent.verticalCenter
+            color: root.viewMode === "list" ? Color.scheme.secondaryContainer : "transparent"
 
-            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+            Behavior on color { ColorAnimation { duration: 150 } }
 
             Icon {
                 anchors.centerIn: parent
-                content: "arrow_back"
-                iconSize: 22
-                color: Color.scheme.surfaceText
+                content: "view_list"
+                iconSize: 20
+                color: root.viewMode === "list" ? Color.scheme.secondaryContainerText : Color.scheme.surfaceVariantText
             }
 
             MouseArea {
-                id: _backArea
                 anchors.fill: parent
                 hoverEnabled: true
-                enabled: root.showBackButton
-                visible: root.showBackButton
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.backClicked()
+                onClicked: root.listViewRequested()
             }
         }
 
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.title
-            color: Color.scheme.surfaceText
-            font.family: Type.titleLargeEmphasized.family
-            font.weight: Type.titleLargeEmphasized.weight
-            font.pixelSize: Type.titleLargeEmphasized.size
-            elide: Text.ElideMiddle
-            width: root.width - 100
+        Rectangle {
+            width: 40
+            height: 40
+            radius: Shape.full
+            color: root.viewMode === "grid" ? Color.scheme.secondaryContainer : "transparent"
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Icon {
+                anchors.centerIn: parent
+                content: "grid_view"
+                iconSize: 20
+                color: root.viewMode === "grid" ? Color.scheme.secondaryContainerText : Color.scheme.surfaceVariantText
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.gridViewRequested()
+            }
         }
     }
 }
