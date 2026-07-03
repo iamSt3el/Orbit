@@ -31,7 +31,12 @@ Item {
         opacity: 0.4
 
         MouseArea {
+            // See ItemContextMenu.qml — must accept every button and track
+            // hover so nothing underneath can still be interacted with
+            // while this dialog is open.
             anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
             onClicked: root.close()
         }
     }

@@ -8,7 +8,10 @@ Rectangle {
     property string currentPath: ""
 
     width: 220
+    radius: Shape.large
     color: Color.scheme.surfaceContainerLow
+    border.width: 1
+    border.color: Color.scheme.outlineVariant
 
     readonly property var _shortcuts: [
         { label: "Home", icon: "home", path: fileModel ? fileModel.homePath : "" },

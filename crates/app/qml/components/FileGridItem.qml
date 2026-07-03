@@ -1,4 +1,5 @@
 import QtQuick
+import "../util/format.js" as Format
 import com.filemanager.app 1.0
 
 Item {
@@ -78,6 +79,18 @@ Item {
                 font.pixelSize: Type.bodyMedium.size
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideMiddle
+                width: card.width - 16
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            Text {
+                text: root.isDir ? "" : Format.formatBytes(root.size)
+                visible: text.length > 0
+                color: Color.scheme.surfaceVariantText
+                font.family: Type.bodyMedium.family
+                font.weight: Type.bodyMedium.weight
+                font.pixelSize: 11
+                horizontalAlignment: Text.AlignHCenter
                 width: card.width - 16
                 anchors.horizontalCenter: parent.horizontalCenter
             }

@@ -52,8 +52,14 @@ Window {
         }
     }
 
+    // Top bar, sidebar, and content are three separate floating, rounded
+    // panels over the window's base surface color (rather than one edge-
+    // to-edge slab) — margins/spacing here are what create the gaps that
+    // make them read as distinct "islands".
     Column {
         anchors.fill: parent
+        anchors.margins: 12
+        spacing: 12
 
         TopAppBar {
             width: parent.width
@@ -67,7 +73,8 @@ Window {
 
         Row {
             width: parent.width
-            height: parent.height - 72
+            height: parent.height - 64 - 12
+            spacing: 12
 
             Sidebar {
                 height: parent.height
@@ -77,14 +84,15 @@ Window {
 
             Item {
                 id: contentArea
-                width: parent.width - 220
+                width: parent.width - 220 - 12
                 height: parent.height
 
                 Rectangle {
                     anchors.fill: parent
-                    anchors.margins: 16
                     radius: Shape.large
                     color: Color.scheme.surfaceContainerLow
+                    border.width: 1
+                    border.color: Color.scheme.outlineVariant
                     clip: true
 
                     Component {
@@ -143,7 +151,7 @@ Window {
                             model: fileModel
                             readonly property int minCellWidth: 110
                             cellWidth: width / Math.max(1, Math.floor(width / minCellWidth))
-                            cellHeight: 120
+                            cellHeight: 132
                             reuseItems: true
                             cacheBuffer: 400
                             acceptedButtons: Qt.NoButton

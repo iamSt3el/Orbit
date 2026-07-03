@@ -51,7 +51,14 @@ Item {
     }
 
     MouseArea {
+        // Must swallow every button and track hover itself — a MouseArea
+        // that only accepts its default (left) button lets right-clicks
+        // and hover-move events fall through to whatever is underneath,
+        // which is how a click on the scrim could still open another
+        // item's context menu behind this one.
         anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.AllButtons
         onClicked: root.close()
         onWheel: (wheel) => { wheel.accepted = true }
     }
