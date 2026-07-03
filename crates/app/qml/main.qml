@@ -95,6 +95,12 @@ Window {
                             }
 
                             MouseArea {
+                                // Stacked below the delegates (which live inside
+                                // listView's contentItem) so a right-click over an
+                                // item reaches FileListItem's own MouseArea first;
+                                // this one only fires for clicks that miss every
+                                // delegate, i.e. genuinely empty space.
+                                z: -1
                                 anchors.fill: parent
                                 acceptedButtons: Qt.RightButton
                                 onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
@@ -134,6 +140,10 @@ Window {
                             }
 
                             MouseArea {
+                                // See the matching comment in the ListView's
+                                // overlay above — kept below the delegates in
+                                // z-order so per-item right-clicks win.
+                                z: -1
                                 anchors.fill: parent
                                 acceptedButtons: Qt.RightButton
                                 onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)

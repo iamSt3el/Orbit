@@ -55,22 +55,9 @@ Rectangle {
         }
     }
 
-    // A small, always-alive shape-morph mark — a bit of M3 Expressive
-    // personality that doesn't depend on there being a real async
-    // operation to represent (navigate/create/delete are currently
-    // synchronous, so a loading indicator tied to them wouldn't get a
-    // chance to render any frames during the block anyway).
-    ShapeLoader {
-        id: brandMark
-        size: 22
+    Text {
         anchors.left: backButton.visible ? backButton.right : parent.left
         anchors.leftMargin: backButton.visible ? 12 : 24
-        anchors.verticalCenter: parent.verticalCenter
-    }
-
-    Text {
-        anchors.left: brandMark.right
-        anchors.leftMargin: 12
         anchors.right: viewToggle.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
