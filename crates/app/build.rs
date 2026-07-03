@@ -22,6 +22,7 @@ fn main() {
                 "qml/shapes/shapes/utils.js",
                 "qml/components/Ripple.qml",
                 "qml/components/Icon.qml",
+                "qml/components/Button.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))
