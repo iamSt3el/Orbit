@@ -19,6 +19,18 @@ Item {
     visible: false
     z: 1000
 
+    // Otherwise this would always show hardcoded defaults on open, even
+    // when the real values (restored from settings.json at startup)
+    // differ — e.g. "Show hidden files" reading off when it's actually on.
+    Component.onCompleted: {
+        if (root.fileModel) {
+            root.showHidden = root.fileModel.isShowHidden()
+            root.sortKey = root.fileModel.currentSortKey()
+            root.sortAscending = root.fileModel.isSortAscending()
+            root.iconSizeLevel = root.fileModel.iconSizeLevel
+        }
+    }
+
     readonly property var _sortOptions: [
         { key: "name", label: "Name" },
         { key: "size", label: "Size" },
@@ -102,6 +114,7 @@ Item {
                         root.showHidden = !root.showHidden
                         if (root.fileModel) {
                             root.fileModel.setShowHidden(root.showHidden)
+                            root.fileModel.saveSettings()
                         }
                     }
                 }
@@ -171,6 +184,7 @@ Item {
                             root.sortKey = sortRow.modelData.key
                             if (root.fileModel) {
                                 root.fileModel.setSortKey(root.sortKey)
+                                root.fileModel.saveSettings()
                             }
                         }
                     }
@@ -192,6 +206,7 @@ Item {
                     root.sortAscending = value
                     if (root.fileModel) {
                         root.fileModel.setSortAscending(value)
+                        root.fileModel.saveSettings()
                     }
                 }
             }

@@ -11,15 +11,28 @@ Item {
 
     signal newFolderRequested
     signal openTerminalRequested
+    signal pasteRequested
 
     anchors.fill: parent
     visible: false
     z: 1000
 
-    readonly property var _items: [
-        { icon: "create_new_folder", label: "New folder" },
-        { icon: "terminal", label: "Open Terminal Here" }
-    ]
+    // Set fresh by main.qml right before each popup() call — canPaste()
+    // isn't a reactive qproperty, so this is a snapshot, not a live
+    // binding (matching how popup() already takes the entry's other
+    // fields as plain snapshot arguments).
+    property bool canPaste: false
+
+    readonly property var _items: canPaste
+        ? [
+            { icon: "create_new_folder", label: "New folder" },
+            { icon: "content_paste", label: "Paste" },
+            { icon: "terminal", label: "Open Terminal Here" }
+        ]
+        : [
+            { icon: "create_new_folder", label: "New folder" },
+            { icon: "terminal", label: "Open Terminal Here" }
+        ]
 
     function popup(x, y) {
         menu.x = Math.min(x, root.width - menu.width)
@@ -107,6 +120,7 @@ Item {
                             root.close()
                             switch (menuItem.modelData.label) {
                             case "New folder": root.newFolderRequested(); break
+                            case "Paste": root.pasteRequested(); break
                             case "Open Terminal Here": root.openTerminalRequested(); break
                             }
                         }

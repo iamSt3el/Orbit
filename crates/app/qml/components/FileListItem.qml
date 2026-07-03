@@ -94,7 +94,7 @@ Item {
 
             Icon {
                 anchors.centerIn: parent
-                content: root.isDir ? "folder" : "description"
+                content: Format.iconForKey(root.iconKey, root.isDir)
                 iconSize: root.iconSize
                 color: root.isDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
             }

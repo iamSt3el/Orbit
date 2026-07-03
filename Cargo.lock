@@ -385,6 +385,8 @@ dependencies = [
  "libc",
  "mime_guess",
  "notify",
+ "serde",
+ "serde_json",
  "tempfile",
  "time",
  "tokio",

@@ -3,8 +3,8 @@ import QtQuick.Layouts
 import com.filemanager.app 1.0
 
 // The content pane's own header row — back button, current path/search,
-// view options, theme toggle, and the list/grid switch. Deliberately not a
-// separate floating/colored bar: it lives directly on the unified card's
+// view options, and the list/grid switch. Deliberately not a separate
+// floating/colored bar: it lives directly on the unified card's
 // surfaceContainer background, matching the "right layout" that groups
 // content-scoped controls with the content they act on.
 Item {
@@ -73,6 +73,18 @@ Item {
             fileModel: root.fileModel
         }
 
+        // Shape-morph loader — visible only while a background file
+        // operation (copy/move, see BusySnackbar) is running. Kept small
+        // and out of the way; the snackbar carries the actual status text.
+        ShapeLoader {
+            Layout.preferredWidth: 20
+            Layout.preferredHeight: 20
+            size: 20
+            visible: root.fileModel && root.fileModel.isBusy
+            running: visible
+            color: Color.scheme.primary
+        }
+
         Item {
             // Absorbs whatever space PathBar doesn't use, so the trailing
             // controls stay pinned to the right instead of hugging the path.
@@ -110,36 +122,6 @@ Item {
                     var scenePos = optionsButton.mapToItem(null, 0, optionsButton.height)
                     root.optionsRequested(scenePos.x, scenePos.y)
                 }
-            }
-        }
-
-        // Dark/light theme toggle.
-        Item {
-            id: themeToggle
-            Layout.preferredWidth: 40
-            Layout.preferredHeight: 40
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Shape.full
-                color: Elevation.surfaceAt(3)
-                opacity: _themeArea.containsMouse ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-            }
-
-            Icon {
-                anchors.centerIn: parent
-                content: Color.darkMode ? "light_mode" : "dark_mode"
-                iconSize: 20
-                color: Color.scheme.surfaceText
-            }
-
-            MouseArea {
-                id: _themeArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: Color.darkMode = !Color.darkMode
             }
         }
 

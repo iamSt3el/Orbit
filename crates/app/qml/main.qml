@@ -11,16 +11,17 @@ Window {
     title: "File Manager"
     color: Color.scheme.surface
 
-    property string viewMode: "list" // "list" | "grid"
     property string _pendingDeleteName: ""
 
-    property string iconSizeLevel: "medium" // "small" | "medium" | "large"
+    // viewMode and iconSizeLevel live on fileModel (persisted to
+    // settings.json) rather than as plain window properties, so they
+    // survive a restart — see FileListModel.saveSettings().
     readonly property var iconSizeProfiles: ({
         small: { listIcon: 18, listContainer: 32, gridIcon: 24, gridContainer: 44, gridCell: 104, gridMinWidth: 90 },
         medium: { listIcon: 22, listContainer: 40, gridIcon: 32, gridContainer: 56, gridCell: 132, gridMinWidth: 110 },
         large: { listIcon: 28, listContainer: 48, gridIcon: 40, gridContainer: 68, gridCell: 160, gridMinWidth: 132 }
     })
-    readonly property var activeIconProfile: iconSizeProfiles[iconSizeLevel] || iconSizeProfiles.medium
+    readonly property var activeIconProfile: iconSizeProfiles[fileModel.iconSizeLevel] || iconSizeProfiles.medium
 
     FileListModel {
         id: fileModel
@@ -32,9 +33,12 @@ Window {
             // FileListModel.readThemeColorsFile()) now that fileModel
             // is ready.
             Color.applyCustomColors(fileModel.readThemeColorsFile())
-            navigate(Qt.application.arguments.length > 1
+            // CLI arg wins if given; otherwise resume wherever the last
+            // session left off; otherwise fall back to home.
+            var startPath = Qt.application.arguments.length > 1
                 ? Qt.application.arguments[1]
-                : "/home")
+                : (fileModel.savedLastPath.length > 0 ? fileModel.savedLastPath : "/home")
+            navigate(startPath)
         }
     }
 
@@ -126,11 +130,17 @@ Window {
                         Layout.maximumHeight: 56
                         title: fileModel.currentPath ? fileModel.currentPath : ""
                         showBackButton: fileModel.currentPath && fileModel.currentPath !== "/"
-                        viewMode: window.viewMode
+                        viewMode: fileModel.viewMode
                         fileModel: fileModel
                         onBackClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
-                        onListViewRequested: window.viewMode = "list"
-                        onGridViewRequested: window.viewMode = "grid"
+                        onListViewRequested: {
+                            fileModel.viewMode = "list"
+                            fileModel.saveSettings()
+                        }
+                        onGridViewRequested: {
+                            fileModel.viewMode = "grid"
+                            fileModel.saveSettings()
+                        }
                         onOptionsRequested: (x, y) => viewOptionsMenu.popup(x, y)
                     }
 
@@ -173,6 +183,7 @@ Window {
                                     onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
                                     onClicked: (mouse) => {
                                         var scenePos = listBackgroundArea.mapToItem(null, mouse.x, mouse.y)
+                                        contextMenu.canPaste = fileModel.canPaste()
                                         contextMenu.popup(scenePos.x, scenePos.y)
                                     }
                                 }
@@ -231,6 +242,7 @@ Window {
                                     onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
                                     onClicked: (mouse) => {
                                         var scenePos = gridBackgroundArea.mapToItem(null, mouse.x, mouse.y)
+                                        contextMenu.canPaste = fileModel.canPaste()
                                         contextMenu.popup(scenePos.x, scenePos.y)
                                     }
                                 }
@@ -247,7 +259,7 @@ Window {
 
                         Loader {
                             anchors.fill: parent
-                            sourceComponent: window.viewMode === "grid" ? gridComponent : listComponent
+                            sourceComponent: fileModel.viewMode === "grid" ? gridComponent : listComponent
                         }
                     }
                 }
@@ -262,6 +274,7 @@ Window {
         id: contextMenu
         onNewFolderRequested: newFolderDialog.open()
         onOpenTerminalRequested: fileModel.openTerminalHere()
+        onPasteRequested: fileModel.pasteEntry()
     }
 
     NewFolderDialog {
@@ -272,7 +285,10 @@ Window {
     ViewOptionsMenu {
         id: viewOptionsMenu
         fileModel: fileModel
-        onIconSizeSelected: (level) => window.iconSizeLevel = level
+        onIconSizeSelected: (level) => {
+            fileModel.iconSizeLevel = level
+            fileModel.saveSettings()
+        }
     }
 
     ItemContextMenu {
@@ -287,6 +303,8 @@ Window {
         onRenameRequested: (name) => renameDialog.open(name)
         onDuplicateRequested: (name) => fileModel.duplicateEntry(name)
         onCopyPathRequested: (name) => clipboardHelper.copyText(fileModel.entryAbsolutePath(name))
+        onCopyRequested: (name) => fileModel.copyEntry(name)
+        onCutRequested: (name) => fileModel.cutEntry(name)
         onDeleteRequested: (name) => {
             window._pendingDeleteName = name
             deleteConfirmDialog.open("Move \"" + name + "\" to Trash?")
@@ -310,5 +328,10 @@ Window {
         title: "Move to Trash"
         confirmLabel: "Delete"
         onConfirmed: fileModel.deleteEntry(window._pendingDeleteName)
+    }
+
+    BusySnackbar {
+        active: fileModel.isBusy
+        label: fileModel.busyLabel
     }
 }

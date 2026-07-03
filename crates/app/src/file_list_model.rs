@@ -28,8 +28,18 @@ pub mod qobject {
         #[qproperty(QString, documents_path, cxx_name = "documentsPath")]
         #[qproperty(QString, trash_path, cxx_name = "trashPath")]
         #[qproperty(QString, theme_colors_path, cxx_name = "themeColorsPath")]
+        #[qproperty(QString, view_mode, cxx_name = "viewMode")]
+        #[qproperty(QString, icon_size_level, cxx_name = "iconSizeLevel")]
+        #[qproperty(QString, saved_last_path, cxx_name = "savedLastPath")]
+        #[qproperty(bool, is_busy, cxx_name = "isBusy")]
+        #[qproperty(QString, busy_label, cxx_name = "busyLabel")]
         type FileListModel = super::FileListModelRust;
     }
+
+    // Lets background threads (spawned for copy/move so they don't block
+    // the UI) safely queue updates back onto the Qt thread when done — see
+    // paste_entry().
+    impl cxx_qt::Threading for FileListModel {}
 
     unsafe extern "RustQt" {
         #[qinvokable]
@@ -102,6 +112,27 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openTerminalHere"]
         fn open_terminal_here(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "copyEntry"]
+        fn copy_entry(self: Pin<&mut FileListModel>, name: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "cutEntry"]
+        fn cut_entry(self: Pin<&mut FileListModel>, name: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "canPaste"]
+        fn can_paste(self: &FileListModel) -> bool;
+
+        /// Copies or moves the clipboard entry into the current folder.
+        /// Runs the actual file I/O on a background task (via the shared
+        /// multi-thread runtime) instead of blocking the Qt UI thread —
+        /// isBusy/busyLabel flip on immediately and the model refreshes
+        /// once the background task reports back through qt_thread().
+        #[qinvokable]
+        #[cxx_name = "pasteEntry"]
+        fn paste_entry(self: Pin<&mut FileListModel>);
     }
 
     unsafe extern "RustQt" {
@@ -120,6 +151,29 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "readThemeColorsFile"]
         fn read_theme_colors_file(self: &FileListModel) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "saveSettings"]
+        fn save_settings(self: &FileListModel);
+
+        // show_hidden/sort_key/sort_ascending aren't qproperties (their
+        // setters already exist as setShowHidden/setSortKey/
+        // setSortAscending, which do a model reset a plain qproperty
+        // setter can't) — these are read-only getters so QML can still
+        // show the actual current value, e.g. to initialize
+        // ViewOptionsMenu's display state after a restart instead of
+        // always starting from hardcoded defaults.
+        #[qinvokable]
+        #[cxx_name = "isShowHidden"]
+        fn is_show_hidden(self: &FileListModel) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "currentSortKey"]
+        fn current_sort_key(self: &FileListModel) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "isSortAscending"]
+        fn is_sort_ascending(self: &FileListModel) -> bool;
     }
 
     unsafe extern "RustQt" {
@@ -142,17 +196,22 @@ pub mod qobject {
 }
 
 use cxx_qt::CxxQtType;
+use cxx_qt::Threading;
 use cxx_qt_lib::{QByteArray, QHash, QHashPair_i32_QByteArray, QString, QVariant};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
 // One Tokio runtime shared across all invokables, instead of building and
-// tearing one down on every call. Safe because cxx-qt invokables always run
-// on the Qt main thread, one at a time — never concurrently.
+// tearing one down on every call. Multi-thread (not current-thread): most
+// invokables still just runtime().block_on(...) synchronously on the Qt
+// thread, which works fine either way, but paste_entry() needs a runtime
+// with its own worker threads so runtime().spawn(...) actually makes
+// progress in the background instead of sitting queued until some other
+// call happens to drive the runtime.
 fn runtime() -> &'static tokio::runtime::Runtime {
     static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
     RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_current_thread()
+        tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("failed to create Tokio runtime")
@@ -171,6 +230,13 @@ pub struct FileListModelRust {
     documents_path: QString,
     trash_path: QString,
     theme_colors_path: QString,
+    view_mode: QString,
+    icon_size_level: QString,
+    saved_last_path: QString,
+    is_busy: bool,
+    busy_label: QString,
+    clipboard_path: Option<PathBuf>,
+    clipboard_is_cut: bool,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -187,18 +253,31 @@ impl Default for FileListModelRust {
             let _ = std::fs::create_dir_all(dir);
         }
 
+        // Restores view mode, sort order, icon size, hidden-file
+        // visibility, and the last visited folder from a previous run.
+        // Settings::load() falls back to sensible defaults on its own if
+        // the file is missing or invalid, so this is always safe to use.
+        let settings = fm_core::settings::Settings::load();
+
         Self {
             entries: Vec::new(),
             search_query: QString::from(""),
-            show_hidden: false,
-            sort_key: QString::from("name"),
-            sort_ascending: true,
+            show_hidden: settings.show_hidden,
+            sort_key: QString::from(&settings.sort_key),
+            sort_ascending: settings.sort_ascending,
             current_path: QString::from(""),
             home_path: path_or_empty(fm_core::paths::home_dir()),
             downloads_path: path_or_empty(fm_core::paths::download_dir()),
             documents_path: path_or_empty(fm_core::paths::document_dir()),
             trash_path: path_or_empty(fm_core::paths::trash_dir()),
             theme_colors_path: path_or_empty(fm_core::paths::theme_colors_path()),
+            view_mode: QString::from(&settings.view_mode),
+            icon_size_level: QString::from(&settings.icon_size_level),
+            saved_last_path: QString::from(&settings.last_path),
+            is_busy: false,
+            busy_label: QString::from(""),
+            clipboard_path: None,
+            clipboard_is_cut: false,
         }
     }
 }
@@ -327,6 +406,7 @@ impl qobject::FileListModel {
         self.as_mut().end_reset_model();
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
+        self.save_settings();
     }
 
     fn set_search_query(mut self: core::pin::Pin<&mut Self>, query: &QString) {
@@ -485,6 +565,64 @@ impl qobject::FileListModel {
         }
     }
 
+    fn copy_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        self.as_mut().rust_mut().clipboard_path = Some(current.join(name.to_string()));
+        self.as_mut().rust_mut().clipboard_is_cut = false;
+    }
+
+    fn cut_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        self.as_mut().rust_mut().clipboard_path = Some(current.join(name.to_string()));
+        self.as_mut().rust_mut().clipboard_is_cut = true;
+    }
+
+    fn can_paste(&self) -> bool {
+        self.clipboard_path.is_some()
+    }
+
+    fn paste_entry(mut self: core::pin::Pin<&mut Self>) {
+        let Some(src) = self.clipboard_path.clone() else {
+            return;
+        };
+        let is_cut = self.clipboard_is_cut;
+        let dest_dir = PathBuf::from(self.current_path.to_string());
+        let Some(file_name) = src.file_name() else {
+            return;
+        };
+        let dest = unique_paste_destination(&dest_dir, std::path::Path::new(file_name));
+
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from(if is_cut {
+            "Moving…"
+        } else {
+            "Copying…"
+        }));
+
+        // A copy clears itself from the clipboard after pasting once (like
+        // a cut) — a copy can be pasted repeatedly, matching how every
+        // other file manager's clipboard behaves.
+        if is_cut {
+            self.as_mut().rust_mut().clipboard_path = None;
+        }
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let result = if is_cut {
+                fm_core::ops::move_entry(&src, &dest).await
+            } else {
+                fm_core::ops::copy(&src, &dest).await
+            };
+            let _ = qt_thread.queue(move |mut model| {
+                if let Err(e) = result {
+                    eprintln!("paste_entry failed: {e}");
+                }
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+            });
+        });
+    }
+
     fn entry_absolute_path(&self, name: &QString) -> QString {
         let current = PathBuf::from(self.current_path.to_string());
         QString::from(&current.join(name.to_string()).display().to_string())
@@ -522,6 +660,69 @@ impl qobject::FileListModel {
             .map(|contents| QString::from(&contents))
             .unwrap_or_else(|_| QString::from(""))
     }
+
+    /// Persists the current view mode, sort order, icon size, hidden-file
+    /// visibility, and current folder to settings.json. Called automatically
+    /// on navigate(); QML also calls it directly after changing viewMode,
+    /// iconSizeLevel, or a ViewOptionsMenu setting, since those don't
+    /// otherwise trigger a Rust-side write.
+    fn save_settings(&self) {
+        let settings = fm_core::settings::Settings {
+            view_mode: self.view_mode.to_string(),
+            icon_size_level: self.icon_size_level.to_string(),
+            sort_key: self.sort_key.to_string(),
+            sort_ascending: self.sort_ascending,
+            show_hidden: self.show_hidden,
+            last_path: self.current_path.to_string(),
+        };
+        if let Err(e) = settings.save() {
+            eprintln!("save_settings failed: {e}");
+        }
+    }
+
+    fn is_show_hidden(&self) -> bool {
+        self.show_hidden
+    }
+
+    fn current_sort_key(&self) -> QString {
+        self.sort_key.clone()
+    }
+
+    fn is_sort_ascending(&self) -> bool {
+        self.sort_ascending
+    }
+}
+
+/// Picks a non-colliding destination for a paste: `dest_dir/name` if free,
+/// otherwise `dest_dir/name (copy)`, `dest_dir/name (copy 2)`, etc. — the
+/// same convention as fm_core::ops::duplicate, needed here too since
+/// pasting into the same folder the entry was copied from (or any folder
+/// that already has a same-named entry) would otherwise silently overwrite.
+fn unique_paste_destination(dest_dir: &std::path::Path, name: &std::path::Path) -> PathBuf {
+    let candidate = dest_dir.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let stem = name
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let ext = name.extension().and_then(|e| e.to_str());
+
+    let mut candidate = match ext {
+        Some(ext) => dest_dir.join(format!("{stem} (copy).{ext}")),
+        None => dest_dir.join(format!("{stem} (copy)")),
+    };
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = match ext {
+            Some(ext) => dest_dir.join(format!("{stem} (copy {n}).{ext}")),
+            None => dest_dir.join(format!("{stem} (copy {n})")),
+        };
+        n += 1;
+    }
+    candidate
 }
 
 fn dir_size(path: &std::path::Path) -> u64 {

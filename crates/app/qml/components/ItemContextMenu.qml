@@ -18,6 +18,8 @@ Item {
     signal renameRequested(string name)
     signal duplicateRequested(string name)
     signal copyPathRequested(string name)
+    signal copyRequested(string name)
+    signal cutRequested(string name)
     signal deleteRequested(string name)
     signal propertiesRequested(string name, bool isDir, int size, string modified, string mimeType, string permissions)
 
@@ -27,8 +29,10 @@ Item {
 
     readonly property var _items: [
         { icon: "open_in_new", label: "Open" },
+        { icon: "content_cut", label: "Cut" },
+        { icon: "content_copy", label: "Copy" },
         { icon: "edit", label: "Rename" },
-        { icon: "content_copy", label: "Duplicate" },
+        { icon: "file_copy", label: "Duplicate" },
         { icon: "link", label: "Copy Path" },
         { icon: "delete", label: "Delete", destructive: true },
         { icon: "info", label: "Properties" }
@@ -144,6 +148,8 @@ Item {
                             root.close()
                             switch (menuItem.modelData.label) {
                             case "Open": root.openRequested(root.entryName); break
+                            case "Cut": root.cutRequested(root.entryName); break
+                            case "Copy": root.copyRequested(root.entryName); break
                             case "Rename": root.renameRequested(root.entryName); break
                             case "Duplicate": root.duplicateRequested(root.entryName); break
                             case "Copy Path": root.copyPathRequested(root.entryName); break
