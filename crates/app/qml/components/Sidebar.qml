@@ -10,6 +10,7 @@ Rectangle {
 
     property var fileModel
     property string currentPath: ""
+    signal settingsRequested
 
     width: 200
     radius: 20
@@ -27,9 +28,59 @@ Rectangle {
         anchors.margins: 10
         spacing: 0
 
+        // App title + settings entry point — the sidebar's equivalent of
+        // Nebula's "Nebula / v0.2.0-beta" header.
+        Item {
+            width: parent.width
+            height: 44
+
+            Text {
+                text: "Files"
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                color: Color.scheme.surfaceText
+                font.family: Type.titleLarge.family
+                font.weight: Font.Bold
+                font.pixelSize: 20
+            }
+
+            Item {
+                id: settingsButton
+                width: 32
+                height: 32
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Shape.full
+                    color: Elevation.surfaceAt(3)
+                    opacity: _settingsArea.containsMouse ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                }
+
+                Icon {
+                    anchors.centerIn: parent
+                    content: "settings"
+                    iconSize: 18
+                    color: Color.scheme.surfaceVariantText
+                }
+
+                MouseArea {
+                    id: _settingsArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.settingsRequested()
+                }
+            }
+        }
+
         Text {
             text: "Places"
             leftPadding: 10
+            topPadding: 8
             bottomPadding: 10
             color: Color.scheme.outline
             font.family: Type.labelLarge.family

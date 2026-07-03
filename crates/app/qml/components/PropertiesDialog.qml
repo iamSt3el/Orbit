@@ -100,7 +100,9 @@ Item {
                         model: [
                             { label: "Type", value: root.entryIsDir ? "Folder" : root.entryMimeType },
                             { label: "Size", value: root.entryIsDir
-                                ? (root.fileModel ? Format.formatItemCount(root.fileModel.folderItemCount(root.entryName)) : "—")
+                                ? (root.fileModel
+                                    ? Format.formatBytes(root.fileModel.folderSize(root.entryName)) + " (" + Format.formatItemCount(root.fileModel.folderItemCount(root.entryName)) + ")"
+                                    : "—")
                                 : Format.formatBytes(root.entrySize) },
                             { label: "Permissions", value: root.entryPermissions },
                             { label: "Modified", value: Format.formatModified(root.entryModified) }

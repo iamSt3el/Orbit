@@ -52,29 +52,23 @@ Window {
         }
     }
 
-    // Layout modeled on the user's quickshell "Nebula" settings app: a top
-    // bar, then a single unified card (surfaceContainer) holding the
-    // sidebar and content side by side with no gap between them — the
-    // sidebar's own surfaceContainerHigh fill and independent corner
-    // radius is what visually separates it, not a literal gutter.
+    // Layout modeled on the user's quickshell "Nebula" settings app: a
+    // single unified card (surfaceContainer) holding the sidebar and
+    // content side by side with no gap between them — the sidebar's own
+    // surfaceContainerHigh fill and independent corner radius is what
+    // visually separates it, not a literal gutter. Unlike Nebula's
+    // per-page dialog, there's no separate app-wide top bar: the "right
+    // layout" (back button, path, theme toggle, list/grid switch) lives
+    // inside the content pane as its own header, and the sidebar gets its
+    // own header (title + settings entry point) instead.
     Column {
         anchors.fill: parent
         anchors.margins: 12
         spacing: 12
 
-        TopAppBar {
-            width: parent.width
-            title: fileModel.currentPath ? fileModel.currentPath : ""
-            showBackButton: fileModel.currentPath && fileModel.currentPath !== "/"
-            viewMode: window.viewMode
-            onBackClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
-            onListViewRequested: window.viewMode = "list"
-            onGridViewRequested: window.viewMode = "grid"
-        }
-
         Rectangle {
             width: parent.width
-            height: parent.height - 64 - 12
+            height: parent.height
             radius: 20
             color: Color.scheme.surfaceContainer
             clip: true
@@ -87,12 +81,32 @@ Window {
                     height: parent.height
                     fileModel: fileModel
                     currentPath: fileModel.currentPath ? fileModel.currentPath : ""
+                    onSettingsRequested: {
+                        // No settings screen exists yet — nothing to open.
+                    }
                 }
 
                 Item {
                     id: contentArea
                     width: parent.width - 200
                     height: parent.height
+
+                    TopAppBar {
+                        id: contentHeader
+                        width: parent.width
+                        title: fileModel.currentPath ? fileModel.currentPath : ""
+                        showBackButton: fileModel.currentPath && fileModel.currentPath !== "/"
+                        viewMode: window.viewMode
+                        onBackClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
+                        onListViewRequested: window.viewMode = "list"
+                        onGridViewRequested: window.viewMode = "grid"
+                    }
+
+                    Item {
+                        id: fileViewArea
+                        anchors.top: contentHeader.bottom
+                        width: parent.width
+                        height: parent.height - contentHeader.height
 
                     Component {
                         id: listComponent
@@ -149,11 +163,22 @@ Window {
                             anchors.rightMargin: 14
                             model: fileModel
                             readonly property int minCellWidth: 110
-                            cellWidth: width / Math.max(1, Math.floor(width / minCellWidth))
+                            readonly property int columns: Math.max(1, Math.floor(width / minCellWidth))
+                            // Not Math.floor()'d — GridView's cellWidth accepts a
+                            // fractional value fine, and truncating it here would
+                            // leave up to (columns - 1) px of unfilled space on
+                            // the right, which is exactly the bug this is fixing.
+                            cellWidth: width / columns
                             cellHeight: 132
                             reuseItems: true
                             cacheBuffer: 400
                             acceptedButtons: Qt.NoButton
+                            // GridView doesn't always relayout existing cells when
+                            // cellWidth changes mid-flight (e.g. the panel resizing
+                            // after the grid already has content) — force it so a
+                            // resize can't leave the last recomputed cellWidth
+                            // stale and the row short of the panel's right edge.
+                            onWidthChanged: forceLayout()
                             delegate: FileGridItem {
                                 onContextMenuRequested: (x, y) =>
                                     itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
@@ -187,6 +212,7 @@ Window {
                     Loader {
                         anchors.fill: parent
                         sourceComponent: window.viewMode === "grid" ? gridComponent : listComponent
+                    }
                     }
                 }
             }

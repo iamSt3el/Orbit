@@ -1,7 +1,12 @@
 import QtQuick
 import com.filemanager.app 1.0
 
-Rectangle {
+// The content pane's own header row — back button, current path, theme
+// toggle, and the list/grid switch. Deliberately not a separate
+// floating/colored bar: it lives directly on the unified card's
+// surfaceContainer background, matching the "right layout" that groups
+// content-scoped controls with the content they act on.
+Item {
     id: root
 
     property string title: ""
@@ -11,9 +16,7 @@ Rectangle {
     signal listViewRequested
     signal gridViewRequested
 
-    height: 64
-    radius: 20
-    color: Color.scheme.surfaceContainerHigh
+    height: 56
 
     // Back button — the icon itself is a sibling of the hover-highlight
     // circle, not its child, so it stays visible when the highlight's

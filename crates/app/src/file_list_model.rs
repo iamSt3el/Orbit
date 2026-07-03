@@ -111,6 +111,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "folderItemCount"]
         fn folder_item_count(self: &FileListModel, name: &QString) -> i32;
+
+        #[qinvokable]
+        #[cxx_name = "folderSize"]
+        fn folder_size(self: &FileListModel, name: &QString) -> i64;
     }
 }
 
@@ -352,9 +356,7 @@ impl qobject::FileListModel {
     }
 
     /// A cheap, synchronous immediate-children count for the Properties
-    /// dialog's Size row on a directory — computing a true recursive
-    /// folder size would mean walking the whole tree, which isn't worth
-    /// blocking the UI thread for from a dialog that opens instantly.
+    /// dialog.
     fn folder_item_count(&self, name: &QString) -> i32 {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(name.to_string());
@@ -362,4 +364,33 @@ impl qobject::FileListModel {
             .map(|entries| entries.count() as i32)
             .unwrap_or(0)
     }
+
+    /// A true recursive folder size for the Properties dialog, walking the
+    /// whole tree synchronously. This blocks the UI thread for as long as
+    /// the walk takes — fine for a typical folder, but a folder with a
+    /// very large number of files/subdirectories (or a slow filesystem)
+    /// will make the Properties dialog visibly stall while it opens.
+    fn folder_size(&self, name: &QString) -> i64 {
+        let current = PathBuf::from(self.current_path.to_string());
+        let target = current.join(name.to_string());
+        dir_size(&target) as i64
+    }
+}
+
+fn dir_size(path: &std::path::Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| match entry.metadata() {
+            // metadata() uses lstat on Unix (doesn't follow symlinks), so
+            // a symlink counts its own small size, never the target's —
+            // avoiding both double-counting and symlink-cycle infinite
+            // recursion.
+            Ok(metadata) if metadata.is_dir() => dir_size(&entry.path()),
+            Ok(metadata) => metadata.len(),
+            Err(_) => 0,
+        })
+        .sum()
 }
