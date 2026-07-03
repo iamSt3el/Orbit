@@ -27,6 +27,7 @@ pub mod qobject {
         #[qproperty(QString, downloads_path, cxx_name = "downloadsPath")]
         #[qproperty(QString, documents_path, cxx_name = "documentsPath")]
         #[qproperty(QString, trash_path, cxx_name = "trashPath")]
+        #[qproperty(QString, theme_colors_path, cxx_name = "themeColorsPath")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -165,6 +166,7 @@ pub struct FileListModelRust {
     downloads_path: QString,
     documents_path: QString,
     trash_path: QString,
+    theme_colors_path: QString,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -173,6 +175,14 @@ fn path_or_empty(path: Option<PathBuf>) -> QString {
 
 impl Default for FileListModelRust {
     fn default() -> Self {
+        // Best-effort: create the app's config directory up front so an
+        // external tool (e.g. a wallpaper-based color generator) has
+        // somewhere to write a colors.json into without needing its own
+        // mkdir logic. Not fatal if this fails or the dir already exists.
+        if let Some(dir) = fm_core::paths::app_config_dir() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+
         Self {
             entries: Vec::new(),
             search_query: QString::from(""),
@@ -184,6 +194,7 @@ impl Default for FileListModelRust {
             downloads_path: path_or_empty(fm_core::paths::download_dir()),
             documents_path: path_or_empty(fm_core::paths::document_dir()),
             trash_path: path_or_empty(fm_core::paths::trash_dir()),
+            theme_colors_path: path_or_empty(fm_core::paths::theme_colors_path()),
         }
     }
 }

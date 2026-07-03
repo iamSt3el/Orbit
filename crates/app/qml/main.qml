@@ -25,9 +25,15 @@ Window {
     FileListModel {
         id: fileModel
 
-        Component.onCompleted: navigate(Qt.application.arguments.length > 1
-            ? Qt.application.arguments[1]
-            : "/home")
+        Component.onCompleted: {
+            // A singleton (Color.qml) can be instantiated before this
+            // object exists, so it can't resolve the theme file's path
+            // itself — load it explicitly now that fileModel is ready.
+            Color.loadCustomColors(fileModel.themeColorsPath)
+            navigate(Qt.application.arguments.length > 1
+                ? Qt.application.arguments[1]
+                : "/home")
+        }
     }
 
     function parentPath(path) {

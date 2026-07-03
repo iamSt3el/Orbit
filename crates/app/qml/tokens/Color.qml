@@ -9,6 +9,44 @@ QtObject {
 
     property bool darkMode: false
 
+    // Populated by loadCustomColors() from an external JSON color file
+    // (e.g. a wallpaper-based Material You generator, matched by role
+    // name against this app's own token names) if one exists at the
+    // given path; stays null otherwise, in which case `scheme` falls
+    // back to the generated light/dark palettes below.
+    property var custom: null
+
+    function _customColor(key, fallback) {
+        return (root.custom && root.custom[key]) ? root.custom[key] : fallback
+    }
+
+    // Reads and applies an external color file written by another tool.
+    // Safe to call with a path that doesn't exist (or isn't valid JSON) —
+    // silently leaves `custom` unset so `scheme` keeps using the
+    // generated palette. Call once, after the path is known (e.g. from
+    // FileListModel.themeColorsPath), not from Component.onCompleted here
+    // — this is a singleton that may be instantiated before that path is
+    // resolvable.
+    function loadCustomColors(path) {
+        if (!path || path.length === 0) {
+            return
+        }
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file://" + path, false)
+        xhr.send()
+        if (xhr.status !== 200 && xhr.status !== 0) {
+            return
+        }
+        if (!xhr.responseText || xhr.responseText.length === 0) {
+            return
+        }
+        try {
+            root.custom = JSON.parse(xhr.responseText)
+        } catch (e) {
+            console.warn("Color.qml: failed to parse custom color file:", e)
+        }
+    }
+
     readonly property QtObject light: QtObject {
         readonly property color primary: "#65558f"
         readonly property color primaryText: "#ffffff"
@@ -73,5 +111,37 @@ QtObject {
         readonly property color inversePrimary: "#65558f"
     }
 
-    readonly property QtObject scheme: darkMode ? dark : light
+    readonly property QtObject customScheme: QtObject {
+        readonly property color primary: root._customColor("primary", root.dark.primary)
+        readonly property color primaryText: root._customColor("primaryText", root.dark.primaryText)
+        readonly property color primaryContainer: root._customColor("primaryContainer", root.dark.primaryContainer)
+        readonly property color primaryContainerText: root._customColor("primaryContainerText", root.dark.primaryContainerText)
+        readonly property color secondary: root._customColor("secondary", root.dark.secondary)
+        readonly property color secondaryText: root._customColor("secondaryText", root.dark.secondaryText)
+        readonly property color secondaryContainer: root._customColor("secondaryContainer", root.dark.secondaryContainer)
+        readonly property color secondaryContainerText: root._customColor("secondaryContainerText", root.dark.secondaryContainerText)
+        readonly property color tertiary: root._customColor("tertiary", root.dark.tertiary)
+        readonly property color tertiaryText: root._customColor("tertiaryText", root.dark.tertiaryText)
+        readonly property color tertiaryContainer: root._customColor("tertiaryContainer", root.dark.tertiaryContainer)
+        readonly property color tertiaryContainerText: root._customColor("tertiaryContainerText", root.dark.tertiaryContainerText)
+        readonly property color error: root._customColor("error", root.dark.error)
+        readonly property color errorText: root._customColor("errorText", root.dark.errorText)
+        readonly property color errorContainer: root._customColor("errorContainer", root.dark.errorContainer)
+        readonly property color errorContainerText: root._customColor("errorContainerText", root.dark.errorContainerText)
+        readonly property color surface: root._customColor("surface", root.dark.surface)
+        readonly property color surfaceText: root._customColor("surfaceText", root.dark.surfaceText)
+        readonly property color surfaceVariantText: root._customColor("surfaceVariantText", root.dark.surfaceVariantText)
+        readonly property color surfaceContainerLowest: root._customColor("surfaceContainerLowest", root.dark.surfaceContainerLowest)
+        readonly property color surfaceContainerLow: root._customColor("surfaceContainerLow", root.dark.surfaceContainerLow)
+        readonly property color surfaceContainer: root._customColor("surfaceContainer", root.dark.surfaceContainer)
+        readonly property color surfaceContainerHigh: root._customColor("surfaceContainerHigh", root.dark.surfaceContainerHigh)
+        readonly property color surfaceContainerHighest: root._customColor("surfaceContainerHighest", root.dark.surfaceContainerHighest)
+        readonly property color outline: root._customColor("outline", root.dark.outline)
+        readonly property color outlineVariant: root._customColor("outlineVariant", root.dark.outlineVariant)
+        readonly property color inverseSurface: root._customColor("inverseSurface", root.dark.inverseSurface)
+        readonly property color inverseOnSurface: root._customColor("inverseSurfaceText", root.dark.inverseOnSurface)
+        readonly property color inversePrimary: root._customColor("inversePrimary", root.dark.inversePrimary)
+    }
+
+    readonly property QtObject scheme: custom !== null ? customScheme : (darkMode ? dark : light)
 }

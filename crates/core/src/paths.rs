@@ -17,3 +17,17 @@ pub fn document_dir() -> Option<PathBuf> {
 pub fn trash_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|dir| dir.join("Trash").join("files"))
 }
+
+/// This app's own config directory (`~/.config/filemanager`) — currently
+/// only used to look for an external theme color file dropped in by
+/// another tool.
+pub fn app_config_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("filemanager"))
+}
+
+/// Where an external tool (e.g. a wallpaper-based Material You color
+/// generator) can place a JSON color file for this app to pick up instead
+/// of its own generated defaults.
+pub fn theme_colors_path() -> Option<PathBuf> {
+    app_config_dir().map(|dir| dir.join("colors.json"))
+}
