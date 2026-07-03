@@ -768,15 +768,35 @@ impl qobject::FileListModel {
         let qt_thread = self.qt_thread();
 
         runtime().spawn(async move {
-            // Waits its turn rather than decoding immediately — see
-            // thumbnail_semaphore()'s comment for why this cap exists.
-            let _permit = thumbnail_semaphore().acquire().await;
-            let outcome = tokio::task::spawn_blocking(move || {
-                fm_core::thumbnails::get_or_generate(&request)
+            // Cheap cache-only probe first, NOT gated by the semaphore.
+            // The semaphore queue is FIFO: on the first visit to a big
+            // uncached folder it fills with hundreds of slow decodes, and
+            // when cache checks had to wait in that same line, revisiting
+            // the folder rendered nothing at all until the entire backlog
+            // drained — already-thumbnailed images must never wait behind
+            // generation work.
+            let probe_request = request.clone();
+            let cached = tokio::task::spawn_blocking(move || {
+                fm_core::thumbnails::lookup_cached(&probe_request)
             })
             .await
-            .unwrap_or(fm_core::thumbnails::ThumbnailOutcome::Unavailable);
-            drop(_permit);
+            .ok()
+            .flatten();
+
+            let outcome = match cached {
+                Some(path) => fm_core::thumbnails::ThumbnailOutcome::Ready(path),
+                None => {
+                    // Cache miss — real decode work, so wait for a permit;
+                    // see thumbnail_semaphore()'s comment for why the cap
+                    // exists.
+                    let _permit = thumbnail_semaphore().acquire().await;
+                    tokio::task::spawn_blocking(move || {
+                        fm_core::thumbnails::get_or_generate(&request)
+                    })
+                    .await
+                    .unwrap_or(fm_core::thumbnails::ThumbnailOutcome::Unavailable)
+                }
+            };
 
             let _ = qt_thread.queue(move |mut model| {
                 model

@@ -1,4 +1,6 @@
-use fm_core::thumbnails::{get_or_generate_in, is_thumbnailable, ThumbnailOutcome, ThumbnailRequest};
+use fm_core::thumbnails::{
+    get_or_generate_in, is_thumbnailable, lookup_cached_in, ThumbnailOutcome, ThumbnailRequest,
+};
 use std::time::SystemTime;
 use tempfile::tempdir;
 
@@ -15,6 +17,31 @@ fn write_fixture_svg(path: &std::path::Path) {
             </svg>"#,
     )
     .unwrap();
+}
+
+#[test]
+fn lookup_cached_is_a_pure_probe_that_never_generates() {
+    let source_dir = tempdir().unwrap();
+    let cache_dir = tempdir().unwrap();
+    let source_path = source_dir.path().join("photo.png");
+    write_fixture_png(&source_path);
+
+    let request = ThumbnailRequest {
+        source_path: source_path.clone(),
+        mime_type: "image/png".to_string(),
+        size: std::fs::metadata(&source_path).unwrap().len(),
+        modified: std::fs::metadata(&source_path).unwrap().modified().unwrap(),
+    };
+
+    // Nothing cached yet: the probe must miss AND must not create anything.
+    assert_eq!(lookup_cached_in(&request, cache_dir.path()), None);
+    assert!(!cache_dir.path().join("normal").exists());
+
+    // After a real generation, the probe finds exactly that file.
+    let ThumbnailOutcome::Ready(generated) = get_or_generate_in(&request, cache_dir.path()) else {
+        panic!("expected generation to succeed");
+    };
+    assert_eq!(lookup_cached_in(&request, cache_dir.path()), Some(generated));
 }
 
 #[test]

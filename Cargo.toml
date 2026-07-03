@@ -1,3 +1,55 @@
 [workspace]
 resolver = "2"
 members = ["crates/core", "crates/app", "crates/xtask"]
+
+# Image decoding is the one genuinely CPU-bound hot path in this app, and
+# unoptimized it runs 10-50x slower — a debug build took multiple seconds
+# per 4K wallpaper, turning a folder's thumbnail backlog into minutes.
+# Optimizing just the decode pipeline keeps our own crates fully debuggable
+# while making dev-build thumbnailing behave like release.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.zune-core]
+opt-level = 3
+[profile.dev.package.image-webp]
+opt-level = 3
+[profile.dev.package.gif]
+opt-level = 3
+[profile.dev.package.weezl]
+opt-level = 3
+[profile.dev.package.tiff]
+opt-level = 3
+[profile.dev.package.fax]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.flate2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.adler2]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+[profile.dev.package.simd-adler32]
+opt-level = 3
+[profile.dev.package.resvg]
+opt-level = 3
+[profile.dev.package.usvg]
+opt-level = 3
+[profile.dev.package.tiny-skia]
+opt-level = 3
+[profile.dev.package.tiny-skia-path]
+opt-level = 3
+[profile.dev.package.moxcms]
+opt-level = 3
+[profile.dev.package.color_quant]
+opt-level = 3
+[profile.dev.package.byteorder-lite]
+opt-level = 3
+[profile.dev.package.md-5]
+opt-level = 3

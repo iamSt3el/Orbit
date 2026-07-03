@@ -13,9 +13,10 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Files larger than this are skipped entirely — decoding a huge image just
-/// to shrink it to 128px is wasted work, and this keeps memory use bounded
-/// regardless of what a folder contains.
-const MAX_SOURCE_BYTES: u64 = 20 * 1024 * 1024;
+/// to shrink it to 128px is wasted work. Sized so real-world 4K wallpaper
+/// PNGs (~20-25MB) still qualify; the pixel-count guard below is what
+/// actually bounds decode memory, this only rules out absurd outliers.
+const MAX_SOURCE_BYTES: u64 = 50 * 1024 * 1024;
 
 /// A second, pixel-count-based guard on top of the byte-size cutoff above —
 /// a small but highly-compressed file (e.g. a solid-color 10000x10000 PNG)
@@ -51,11 +52,45 @@ pub enum ThumbnailOutcome {
     Unavailable,
 }
 
+#[derive(Debug, Clone)]
 pub struct ThumbnailRequest {
     pub source_path: PathBuf,
     pub mime_type: String,
     pub size: u64,
     pub modified: SystemTime,
+}
+
+/// The (uri, mtime-in-seconds, md5-cache-key) triple identifying `request`
+/// in the cache — shared by the cheap lookup and the full generate paths so
+/// they can never disagree about which file they're talking about.
+fn request_identity(request: &ThumbnailRequest) -> Option<(String, u64, String)> {
+    let uri = file_uri(&request.source_path)?;
+    let mtime = request.modified.duration_since(UNIX_EPOCH).ok()?.as_secs();
+    let key = cache_key(&uri);
+    Some((uri, mtime, key))
+}
+
+/// Cache-only probe: returns the path of an existing fresh thumbnail, or
+/// `None` without doing any decoding. Cheap enough to run outside whatever
+/// concurrency limit gates real generation — this is what lets a folder of
+/// already-thumbnailed images render instantly even while a long generation
+/// backlog for other files is still being worked through.
+///
+/// Deliberately skips the size guards that `get_or_generate` applies: those
+/// exist to bound *our* decode cost, but a fresh cached thumbnail is usable
+/// no matter how big its source is (another tool with laxer limits, e.g.
+/// GNOME's thumbnailer, may well have produced it).
+pub fn lookup_cached(request: &ThumbnailRequest) -> Option<PathBuf> {
+    lookup_cached_in(request, &cache_root()?)
+}
+
+pub fn lookup_cached_in(request: &ThumbnailRequest, cache_root: &Path) -> Option<PathBuf> {
+    if !is_thumbnailable(&request.mime_type) {
+        return None;
+    }
+    let (uri, mtime, key) = request_identity(request)?;
+    let cached = cache_root.join("normal").join(format!("{key}.png"));
+    is_fresh(&cached, &uri, mtime).then_some(cached)
 }
 
 /// Whether `mime_type` is one this module knows how to thumbnail. Kept
@@ -92,14 +127,9 @@ pub fn get_or_generate_in(request: &ThumbnailRequest, cache_root: &Path) -> Thum
     if !is_thumbnailable(&request.mime_type) || request.size > MAX_SOURCE_BYTES {
         return ThumbnailOutcome::Unavailable;
     }
-    let Some(uri) = file_uri(&request.source_path) else {
+    let Some((uri, mtime, key)) = request_identity(request) else {
         return ThumbnailOutcome::Unavailable;
     };
-    let Ok(mtime) = request.modified.duration_since(UNIX_EPOCH) else {
-        return ThumbnailOutcome::Unavailable;
-    };
-    let mtime = mtime.as_secs();
-    let key = cache_key(&uri);
 
     let normal_dir = cache_root.join("normal");
     let cached = normal_dir.join(format!("{key}.png"));
