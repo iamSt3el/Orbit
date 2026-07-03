@@ -9,39 +9,34 @@ QtObject {
 
     property bool darkMode: false
 
-    // Populated by loadCustomColors() from an external JSON color file
-    // (e.g. a wallpaper-based Material You generator, matched by role
-    // name against this app's own token names) if one exists at the
-    // given path; stays null otherwise, in which case `scheme` falls
-    // back to the generated light/dark palettes below.
+    // Populated by applyCustomColors() from an external JSON color file's
+    // contents (e.g. a wallpaper-based Material You generator, matched by
+    // role name against this app's own token names) if one was found;
+    // stays null otherwise, in which case `scheme` falls back to the
+    // generated light/dark palettes below.
     property var custom: null
 
     function _customColor(key, fallback) {
         return (root.custom && root.custom[key]) ? root.custom[key] : fallback
     }
 
-    // Reads and applies an external color file written by another tool.
-    // Safe to call with a path that doesn't exist (or isn't valid JSON) —
-    // silently leaves `custom` unset so `scheme` keeps using the
-    // generated palette. Call once, after the path is known (e.g. from
-    // FileListModel.themeColorsPath), not from Component.onCompleted here
-    // — this is a singleton that may be instantiated before that path is
-    // resolvable.
-    function loadCustomColors(path) {
-        if (!path || path.length === 0) {
-            return
-        }
-        var xhr = new XMLHttpRequest()
-        xhr.open("GET", "file://" + path, false)
-        xhr.send()
-        if (xhr.status !== 200 && xhr.status !== 0) {
-            return
-        }
-        if (!xhr.responseText || xhr.responseText.length === 0) {
+    // Parses and applies an external color file's raw JSON text. Reading
+    // the file itself happens on the Rust side (FileListModel.
+    // readThemeColorsFile()) rather than here via QML's XMLHttpRequest —
+    // Qt disables local file reads through XHR by default
+    // (QML_XHR_ALLOW_FILE_READ), and requiring users to set an env var
+    // just to use a color file isn't reasonable. Safe to call with an
+    // empty string (missing file) or invalid JSON — silently leaves
+    // `custom` unset so `scheme` keeps using the generated palette. Call
+    // once, after FileListModel exists — this is a singleton that may be
+    // instantiated before that, so it can't read the file itself from
+    // Component.onCompleted here.
+    function applyCustomColors(text) {
+        if (!text || text.length === 0) {
             return
         }
         try {
-            root.custom = JSON.parse(xhr.responseText)
+            root.custom = JSON.parse(text)
         } catch (e) {
             console.warn("Color.qml: failed to parse custom color file:", e)
         }

@@ -27,9 +27,11 @@ Window {
 
         Component.onCompleted: {
             // A singleton (Color.qml) can be instantiated before this
-            // object exists, so it can't resolve the theme file's path
-            // itself — load it explicitly now that fileModel is ready.
-            Color.loadCustomColors(fileModel.themeColorsPath)
+            // object exists, so it can't read the theme file itself —
+            // read it here (Rust-side, not QML XHR — see
+            // FileListModel.readThemeColorsFile()) now that fileModel
+            // is ready.
+            Color.applyCustomColors(fileModel.readThemeColorsFile())
             navigate(Qt.application.arguments.length > 1
                 ? Qt.application.arguments[1]
                 : "/home")

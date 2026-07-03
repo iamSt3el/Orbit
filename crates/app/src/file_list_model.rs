@@ -116,6 +116,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "folderSize"]
         fn folder_size(self: &FileListModel, name: &QString) -> i64;
+
+        #[qinvokable]
+        #[cxx_name = "readThemeColorsFile"]
+        fn read_theme_colors_file(self: &FileListModel) -> QString;
     }
 
     unsafe extern "RustQt" {
@@ -505,6 +509,18 @@ impl qobject::FileListModel {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(name.to_string());
         dir_size(&target) as i64
+    }
+
+    /// Reads themeColorsPath's raw contents for Color.qml to JSON.parse.
+    /// Done here rather than via QML's XMLHttpRequest — Qt disables local
+    /// file reads through XHR by default (QML_XHR_ALLOW_FILE_READ), and
+    /// requiring users to set an env var just to use a color file isn't
+    /// reasonable. Plain Rust file I/O has no such restriction. Returns an
+    /// empty string if the file doesn't exist or can't be read.
+    fn read_theme_colors_file(&self) -> QString {
+        std::fs::read_to_string(self.theme_colors_path.to_string())
+            .map(|contents| QString::from(&contents))
+            .unwrap_or_else(|_| QString::from(""))
     }
 }
 
