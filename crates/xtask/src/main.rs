@@ -15,61 +15,50 @@ struct Modes {
     dark: BTreeMap<String, String>,
 }
 
-const ROLES: &[&str] = &[
-    "primary",
-    "on_primary",
-    "primary_container",
-    "on_primary_container",
-    "secondary",
-    "on_secondary",
-    "secondary_container",
-    "on_secondary_container",
-    "tertiary",
-    "on_tertiary",
-    "tertiary_container",
-    "on_tertiary_container",
-    "error",
-    "on_error",
-    "error_container",
-    "on_error_container",
-    "surface",
-    "on_surface",
-    "on_surface_variant",
-    "surface_container_lowest",
-    "surface_container_low",
-    "surface_container",
-    "surface_container_high",
-    "surface_container_highest",
-    "outline",
-    "outline_variant",
-    "inverse_surface",
-    "inverse_on_surface",
-    "inverse_primary",
+// (matugen role key, QML property name). QML reserves the `onXxx` naming
+// pattern for signal handlers, so a property cannot be literally named
+// e.g. `onSurface` — roles matugen calls `on_*` are suffixed `*Text`
+// instead (matching the convention already used in this machine's
+// quickshell config's ColorProvider.qml, which hit the same issue).
+const ROLES: &[(&str, &str)] = &[
+    ("primary", "primary"),
+    ("on_primary", "primaryText"),
+    ("primary_container", "primaryContainer"),
+    ("on_primary_container", "primaryContainerText"),
+    ("secondary", "secondary"),
+    ("on_secondary", "secondaryText"),
+    ("secondary_container", "secondaryContainer"),
+    ("on_secondary_container", "secondaryContainerText"),
+    ("tertiary", "tertiary"),
+    ("on_tertiary", "tertiaryText"),
+    ("tertiary_container", "tertiaryContainer"),
+    ("on_tertiary_container", "tertiaryContainerText"),
+    ("error", "error"),
+    ("on_error", "errorText"),
+    ("error_container", "errorContainer"),
+    ("on_error_container", "errorContainerText"),
+    ("surface", "surface"),
+    ("on_surface", "surfaceText"),
+    ("on_surface_variant", "surfaceVariantText"),
+    ("surface_container_lowest", "surfaceContainerLowest"),
+    ("surface_container_low", "surfaceContainerLow"),
+    ("surface_container", "surfaceContainer"),
+    ("surface_container_high", "surfaceContainerHigh"),
+    ("surface_container_highest", "surfaceContainerHighest"),
+    ("outline", "outline"),
+    ("outline_variant", "outlineVariant"),
+    ("inverse_surface", "inverseSurface"),
+    ("inverse_on_surface", "inverseOnSurface"),
+    ("inverse_primary", "inversePrimary"),
 ];
-
-fn to_camel(role: &str) -> String {
-    let mut out = String::new();
-    let mut upper_next = false;
-    for ch in role.chars() {
-        if ch == '_' {
-            upper_next = true;
-        } else if upper_next {
-            out.push(ch.to_ascii_uppercase());
-            upper_next = false;
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
 
 fn render_group(colors: &BTreeMap<String, String>) -> String {
     let mut out = String::new();
-    for role in ROLES {
+    for (matugen_key, qml_name) in ROLES {
         let hex = colors
-            .get(*role)
-            .unwrap_or_else(|| panic!("matugen output missing role: {role}"));
-        out.push_str(&format!("        readonly property color {}: \"{}\"\n", to_camel(role), hex));
+            .get(*matugen_key)
+            .unwrap_or_else(|| panic!("matugen output missing role: {matugen_key}"));
+        out.push_str(&format!("        readonly property color {qml_name}: \"{hex}\"\n"));
     }
     out
 }

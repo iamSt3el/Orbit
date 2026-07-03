@@ -19,8 +19,8 @@ Item {
         return "transparent"
     }
     readonly property color _labelColor: {
-        if (variant === "filled") return Color.scheme.onPrimary
-        if (variant === "tonal") return Color.scheme.onSecondaryContainer
+        if (variant === "filled") return Color.scheme.primaryText
+        if (variant === "tonal") return Color.scheme.secondaryContainerText
         return Color.scheme.primary
     }
 

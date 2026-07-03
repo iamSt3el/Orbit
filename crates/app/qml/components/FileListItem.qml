@@ -14,7 +14,7 @@ Item {
     property var fileModel
 
     width: ListView.view ? ListView.view.width : 0
-    height: 56
+    height: 60
 
     Rectangle {
         anchors.fill: parent
@@ -32,24 +32,33 @@ Item {
 
     Row {
         anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
+        anchors.leftMargin: 20
+        anchors.rightMargin: 12
         spacing: 16
 
-        Icon {
-            content: root.isDir ? "folder" : "description"
-            iconSize: 24
-            color: Color.scheme.onSurfaceVariant
+        Rectangle {
+            width: 40
+            height: 40
+            radius: Shape.medium
+            color: root.isDir ? Qt.alpha(Color.scheme.primary, 0.12) : "transparent"
             anchors.verticalCenter: parent.verticalCenter
+
+            Icon {
+                anchors.centerIn: parent
+                content: root.isDir ? "folder" : "description"
+                iconSize: 22
+                color: root.isDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
+            }
         }
 
         Column {
-            width: parent.width - 24 - 24 - 32
+            width: parent.width - 40 - 40 - 32
             anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
 
             Text {
                 text: root.name
-                color: Color.scheme.onSurface
+                color: Color.scheme.surfaceText
                 font.family: Type.bodyLarge.family
                 font.weight: Type.bodyLarge.weight
                 font.pixelSize: Type.bodyLarge.size
@@ -60,23 +69,30 @@ Item {
             Text {
                 text: root.isDir ? "" : (root.size + " bytes")
                 visible: text.length > 0
-                color: Color.scheme.onSurfaceVariant
+                color: Color.scheme.surfaceVariantText
                 font.family: Type.bodyMedium.family
                 font.weight: Type.bodyMedium.weight
                 font.pixelSize: Type.bodyMedium.size
             }
         }
 
-        Icon {
-            content: "delete"
-            iconSize: 20
-            color: Color.scheme.onSurfaceVariant
+        Rectangle {
+            width: 40
+            height: 40
+            radius: Shape.full
+            color: "transparent"
             anchors.verticalCenter: parent.verticalCenter
 
-            MouseArea {
+            Icon {
+                anchors.centerIn: parent
+                content: "delete"
+                iconSize: 20
+                color: Color.scheme.surfaceVariantText
+            }
+
+            Ripple {
                 anchors.fill: parent
-                anchors.margins: -8
-                cursorShape: Qt.PointingHandCursor
+                radius: parent.radius
                 onClicked: root.fileModel.deleteEntry(root.name)
             }
         }

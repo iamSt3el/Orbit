@@ -4,8 +4,8 @@ import com.filemanager.app 1.0
 
 Window {
     id: window
-    width: 800
-    height: 600
+    width: 900
+    height: 650
     visible: true
     title: "File Manager"
     color: Color.scheme.surface
@@ -23,41 +23,96 @@ Window {
 
         TopAppBar {
             width: parent.width
-            title: fileModel.currentPath
+            title: fileModel.currentPath ? fileModel.currentPath : ""
         }
 
-        Row {
+        Item {
             width: parent.width
-            height: 56
-            spacing: 8
-            leftPadding: 16
-            topPadding: 8
-            bottomPadding: 8
+            height: parent.height - 64
 
-            TextInput {
-                id: newFolderName
-                width: 200
-                anchors.verticalCenter: parent.verticalCenter
-                color: Color.scheme.onSurface
-                font.family: Type.bodyLarge.family
-                font.pixelSize: Type.bodyLarge.size
-            }
+            Column {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 12
 
-            Button {
-                variant: "tonal"
-                text: "New folder"
-                icon: "create_new_folder"
-                anchors.verticalCenter: parent.verticalCenter
-                onClicked: fileModel.createFolder(newFolderName.text)
-            }
-        }
+                Rectangle {
+                    id: newFolderRow
+                    width: parent.width
+                    height: 56
+                    radius: Shape.large
+                    color: Color.scheme.surfaceContainerHigh
 
-        ListView {
-            width: parent.width
-            height: parent.height - 64 - 56
-            model: fileModel
-            delegate: FileListItem {
-                fileModel: fileModel
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 8
+                        spacing: 12
+
+                        Rectangle {
+                            width: 220
+                            height: 40
+                            radius: Shape.small
+                            color: Color.scheme.surfaceContainerHighest
+                            border.width: newFolderName.activeFocus ? 2 : 1
+                            border.color: newFolderName.activeFocus ? Color.scheme.primary : Color.scheme.outline
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Behavior on border.width { NumberAnimation { duration: Motion.standard.duration } }
+
+                            TextInput {
+                                id: newFolderName
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: Color.scheme.surfaceText
+                                font.family: Type.bodyLarge.family
+                                font.pixelSize: Type.bodyLarge.size
+                                clip: true
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: newFolderName.text.length === 0
+                                    text: "New folder name"
+                                    color: Color.scheme.surfaceVariantText
+                                    font.family: Type.bodyLarge.family
+                                    font.pixelSize: Type.bodyLarge.size
+                                }
+                            }
+                        }
+
+                        Button {
+                            variant: "tonal"
+                            text: "Create"
+                            icon: "create_new_folder"
+                            anchors.verticalCenter: parent.verticalCenter
+                            onClicked: {
+                                if (newFolderName.text.length > 0) {
+                                    fileModel.createFolder(newFolderName.text)
+                                    newFolderName.text = ""
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: parent.height - newFolderRow.height - parent.spacing
+                    radius: Shape.large
+                    color: Color.scheme.surfaceContainerLow
+                    clip: true
+
+                    ListView {
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        model: fileModel
+                        spacing: 2
+                        delegate: FileListItem {
+                            fileModel: fileModel
+                        }
+                    }
+                }
             }
         }
     }

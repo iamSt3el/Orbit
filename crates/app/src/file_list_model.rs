@@ -59,12 +59,15 @@ pub mod qobject {
 
     unsafe extern "RustQt" {
         #[qinvokable]
+        #[cxx_name = "createFolder"]
         fn create_folder(self: Pin<&mut FileListModel>, name: &QString);
 
         #[qinvokable]
+        #[cxx_name = "renameEntry"]
         fn rename_entry(self: Pin<&mut FileListModel>, old_name: &QString, new_name: &QString);
 
         #[qinvokable]
+        #[cxx_name = "deleteEntry"]
         fn delete_entry(self: Pin<&mut FileListModel>, name: &QString);
     }
 }

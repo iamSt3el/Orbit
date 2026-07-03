@@ -14,7 +14,7 @@ Rectangle {
         anchors.leftMargin: 16
         anchors.verticalCenter: parent.verticalCenter
         text: root.title
-        color: Color.scheme.onSurface
+        color: Color.scheme.surfaceText
         font.family: Type.titleLargeEmphasized.family
         font.weight: Type.titleLargeEmphasized.weight
         font.pixelSize: Type.titleLargeEmphasized.size
