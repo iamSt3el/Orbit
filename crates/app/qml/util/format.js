@@ -14,6 +14,10 @@ function formatBytes(bytes) {
     return value.toFixed(value < 10 ? 1 : 0) + " " + units[unitIndex]
 }
 
+function formatItemCount(count) {
+    return count + (count === 1 ? " item" : " items")
+}
+
 // entryModified is the ISO 8601 string FileListModel hands to QML — the
 // Date constructor parses that natively.
 function formatModified(isoString) {

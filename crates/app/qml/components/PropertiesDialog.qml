@@ -6,6 +6,7 @@ import com.filemanager.app 1.0
 Item {
     id: root
 
+    property var fileModel
     property string entryName: ""
     property bool entryIsDir: false
     property int entrySize: 0
@@ -98,7 +99,9 @@ Item {
                     Repeater {
                         model: [
                             { label: "Type", value: root.entryIsDir ? "Folder" : root.entryMimeType },
-                            { label: "Size", value: root.entryIsDir ? "—" : Format.formatBytes(root.entrySize) },
+                            { label: "Size", value: root.entryIsDir
+                                ? (root.fileModel ? Format.formatItemCount(root.fileModel.folderItemCount(root.entryName)) : "—")
+                                : Format.formatBytes(root.entrySize) },
                             { label: "Permissions", value: root.entryPermissions },
                             { label: "Modified", value: Format.formatModified(root.entryModified) }
                         ]

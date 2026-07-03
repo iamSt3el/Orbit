@@ -107,6 +107,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "entryAbsolutePath"]
         fn entry_absolute_path(self: &FileListModel, name: &QString) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "folderItemCount"]
+        fn folder_item_count(self: &FileListModel, name: &QString) -> i32;
     }
 }
 
@@ -345,5 +349,17 @@ impl qobject::FileListModel {
     fn entry_absolute_path(&self, name: &QString) -> QString {
         let current = PathBuf::from(self.current_path.to_string());
         QString::from(&current.join(name.to_string()).display().to_string())
+    }
+
+    /// A cheap, synchronous immediate-children count for the Properties
+    /// dialog's Size row on a directory — computing a true recursive
+    /// folder size would mean walking the whole tree, which isn't worth
+    /// blocking the UI thread for from a dialog that opens instantly.
+    fn folder_item_count(&self, name: &QString) -> i32 {
+        let current = PathBuf::from(self.current_path.to_string());
+        let target = current.join(name.to_string());
+        std::fs::read_dir(&target)
+            .map(|entries| entries.count() as i32)
+            .unwrap_or(0)
     }
 }

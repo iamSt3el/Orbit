@@ -25,20 +25,20 @@ Item {
         cellArea.hoverEnabled = true
     }
 
-    Rectangle {
+    Item {
         id: card
         anchors.fill: parent
         anchors.margins: 6
-        radius: Shape.medium
-        color: Color.scheme.surface
 
         Rectangle {
-            // Constant-color, opacity-only hover fill (see FileListItem.qml
-            // for why: animating `color` itself from "transparent" to an
-            // opaque tint cross-interpolates alpha and RGB, which flashes
-            // through an intermediate near-black state before settling).
+            // No permanent fill here — a fully opaque `surface`-colored box
+            // behind every single grid icon (regardless of hover) read as a
+            // grid of dark rectangles in dark mode, since `surface` is
+            // darker than the content panel behind it. Hover-only opacity,
+            // constant color (see FileListItem.qml for why not `Behavior on
+            // color` from "transparent").
             anchors.fill: parent
-            radius: parent.radius
+            radius: Shape.medium
             color: Elevation.surfaceAt(1)
             opacity: cellArea.containsMouse ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }

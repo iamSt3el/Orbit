@@ -1,17 +1,19 @@
 import QtQuick
 import com.filemanager.app 1.0
 
+// Sizing/coloring/animation deliberately mirrors the nav rows in the
+// user's quickshell "Nebula" settings app (SettingsContent.qml): 38px row
+// height, 18px icon, 8px icon-label spacing, a filled `primary` pill (not
+// a lighter tonal tint) on active/hover, and a slight scale bounce.
 Rectangle {
     id: root
 
     property var fileModel
     property string currentPath: ""
 
-    width: 220
-    radius: Shape.large
-    color: Color.scheme.surfaceContainerLow
-    border.width: 1
-    border.color: Color.scheme.outlineVariant
+    width: 200
+    radius: 20
+    color: Color.scheme.surfaceContainerHigh
 
     readonly property var _shortcuts: [
         { label: "Home", icon: "home", path: fileModel ? fileModel.homePath : "" },
@@ -22,62 +24,60 @@ Rectangle {
 
     Column {
         anchors.fill: parent
-        anchors.margins: 8
-        spacing: 2
+        anchors.margins: 10
+        spacing: 0
 
         Text {
             text: "Places"
-            leftPadding: 16
-            topPadding: 8
-            bottomPadding: 8
-            color: Color.scheme.surfaceVariantText
+            leftPadding: 10
+            bottomPadding: 10
+            color: Color.scheme.outline
             font.family: Type.labelLarge.family
             font.weight: Type.labelLarge.weight
-            font.pixelSize: Type.labelLarge.size
+            font.pixelSize: 12
         }
 
         Repeater {
             model: root._shortcuts
 
             delegate: Item {
+                id: navItem
                 required property var modelData
 
                 readonly property bool isActive: modelData.path.length > 0 && modelData.path === root.currentPath
+                readonly property bool highlighted: isActive || _area.containsMouse
 
                 width: parent.width
-                height: 44
+                implicitHeight: 38
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: Shape.full
-                    color: isActive ? Color.scheme.secondaryContainer : "transparent"
+                    radius: 10
+                    color: navItem.highlighted ? Color.scheme.primary : "transparent"
+                    Behavior on color { ColorAnimation { duration: 150 } }
 
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: parent.radius
-                        color: Elevation.surfaceAt(1)
-                        opacity: !isActive && _area.containsMouse ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-                    }
+                    scale: navItem.highlighted ? 1 : 0.96
+                    Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
                     Row {
                         anchors.left: parent.left
-                        anchors.leftMargin: 16
+                        anchors.leftMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 12
+                        spacing: 8
 
                         Icon {
-                            content: modelData.icon
-                            iconSize: 20
-                            color: isActive ? Color.scheme.secondaryContainerText : Color.scheme.surfaceVariantText
+                            content: navItem.modelData.icon
+                            iconSize: 18
+                            color: navItem.highlighted ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
                         Text {
-                            text: modelData.label
-                            color: isActive ? Color.scheme.secondaryContainerText : Color.scheme.surfaceText
+                            text: navItem.modelData.label
+                            color: navItem.highlighted ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
                             font.family: Type.bodyLarge.family
-                            font.pixelSize: Type.bodyLarge.size
+                            font.weight: navItem.isActive ? Font.Bold : Font.Medium
+                            font.pixelSize: 15
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
@@ -88,8 +88,8 @@ Rectangle {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (modelData.path.length > 0 && root.fileModel) {
-                                root.fileModel.navigate(modelData.path)
+                            if (navItem.modelData.path.length > 0 && root.fileModel) {
+                                root.fileModel.navigate(navItem.modelData.path)
                             }
                         }
                     }

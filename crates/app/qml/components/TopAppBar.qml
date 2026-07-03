@@ -12,10 +12,8 @@ Rectangle {
     signal gridViewRequested
 
     height: 64
-    radius: Shape.large
-    color: Color.scheme.surfaceContainerLow
-    border.width: 1
-    border.color: Color.scheme.outlineVariant
+    radius: 20
+    color: Color.scheme.surfaceContainerHigh
 
     // Back button — the icon itself is a sibling of the hover-highlight
     // circle, not its child, so it stays visible when the highlight's

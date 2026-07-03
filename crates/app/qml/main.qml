@@ -52,10 +52,11 @@ Window {
         }
     }
 
-    // Top bar, sidebar, and content are three separate floating, rounded
-    // panels over the window's base surface color (rather than one edge-
-    // to-edge slab) — margins/spacing here are what create the gaps that
-    // make them read as distinct "islands".
+    // Layout modeled on the user's quickshell "Nebula" settings app: a top
+    // bar, then a single unified card (surfaceContainer) holding the
+    // sidebar and content side by side with no gap between them — the
+    // sidebar's own surfaceContainerHigh fill and independent corner
+    // radius is what visually separates it, not a literal gutter.
     Column {
         anchors.fill: parent
         anchors.margins: 12
@@ -71,29 +72,27 @@ Window {
             onGridViewRequested: window.viewMode = "grid"
         }
 
-        Row {
+        Rectangle {
             width: parent.width
             height: parent.height - 64 - 12
-            spacing: 12
+            radius: 20
+            color: Color.scheme.surfaceContainer
+            clip: true
 
-            Sidebar {
-                height: parent.height
-                fileModel: fileModel
-                currentPath: fileModel.currentPath ? fileModel.currentPath : ""
-            }
+            Row {
+                anchors.fill: parent
+                spacing: 0
 
-            Item {
-                id: contentArea
-                width: parent.width - 220 - 12
-                height: parent.height
+                Sidebar {
+                    height: parent.height
+                    fileModel: fileModel
+                    currentPath: fileModel.currentPath ? fileModel.currentPath : ""
+                }
 
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Shape.large
-                    color: Color.scheme.surfaceContainerLow
-                    border.width: 1
-                    border.color: Color.scheme.outlineVariant
-                    clip: true
+                Item {
+                    id: contentArea
+                    width: parent.width - 200
+                    height: parent.height
 
                     Component {
                         id: listComponent
@@ -235,6 +234,7 @@ Window {
 
     PropertiesDialog {
         id: propertiesDialog
+        fileModel: fileModel
     }
 
     ConfirmDialog {
