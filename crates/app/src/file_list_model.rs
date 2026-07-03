@@ -22,7 +22,7 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        #[qproperty(QString, current_path)]
+        #[qproperty(QString, current_path, cxx_name = "currentPath")]
         type FileListModel = super::FileListModelRust;
     }
 
