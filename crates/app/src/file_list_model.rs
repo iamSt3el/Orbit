@@ -33,6 +33,9 @@ pub mod qobject {
         #[qproperty(QString, saved_last_path, cxx_name = "savedLastPath")]
         #[qproperty(bool, is_busy, cxx_name = "isBusy")]
         #[qproperty(QString, busy_label, cxx_name = "busyLabel")]
+        #[qproperty(i64, transfer_done_bytes, cxx_name = "transferDoneBytes")]
+        #[qproperty(i64, transfer_total_bytes, cxx_name = "transferTotalBytes")]
+        #[qproperty(QString, transfer_speed_label, cxx_name = "transferSpeedLabel")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -235,6 +238,9 @@ pub struct FileListModelRust {
     saved_last_path: QString,
     is_busy: bool,
     busy_label: QString,
+    transfer_done_bytes: i64,
+    transfer_total_bytes: i64,
+    transfer_speed_label: QString,
     clipboard_path: Option<PathBuf>,
     clipboard_is_cut: bool,
 }
@@ -276,6 +282,9 @@ impl Default for FileListModelRust {
             saved_last_path: QString::from(&settings.last_path),
             is_busy: false,
             busy_label: QString::from(""),
+            transfer_done_bytes: 0,
+            transfer_total_bytes: 0,
+            transfer_speed_label: QString::from(""),
             clipboard_path: None,
             clipboard_is_cut: false,
         }
@@ -592,32 +601,75 @@ impl qobject::FileListModel {
         };
         let dest = unique_paste_destination(&dest_dir, std::path::Path::new(file_name));
 
+        // Computed synchronously, up front — cheap relative to the actual
+        // copy, and needed immediately so the "done / total" display has a
+        // real denominator from the very first frame instead of starting
+        // at "0 B / 0 B".
+        let total = fm_core::ops::path_size(&src);
+
         self.as_mut().set_is_busy(true);
         self.as_mut().set_busy_label(QString::from(if is_cut {
             "Moving…"
         } else {
             "Copying…"
         }));
+        self.as_mut().set_transfer_done_bytes(0);
+        self.as_mut().set_transfer_total_bytes(total as i64);
+        self.as_mut().set_transfer_speed_label(QString::from(""));
 
-        // A copy clears itself from the clipboard after pasting once (like
-        // a cut) — a copy can be pasted repeatedly, matching how every
-        // other file manager's clipboard behaves.
+        // A cut clears itself from the clipboard after pasting once; a
+        // copy can be pasted repeatedly, matching every other file
+        // manager's clipboard behavior.
         if is_cut {
             self.as_mut().rust_mut().clipboard_path = None;
         }
 
+        let done_counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel::<u64>();
+
+        // Progress relay: reads every update off the channel but only
+        // forwards a throttled subset to the Qt thread, so a fast local
+        // copy doesn't flood qt_thread.queue() with dozens of calls per
+        // second for updates the UI couldn't render anyway.
         let qt_thread = self.qt_thread();
+        let progress_qt_thread = qt_thread.clone();
+        runtime().spawn(async move {
+            let start = std::time::Instant::now();
+            let mut last_emit = std::time::Instant::now() - std::time::Duration::from_secs(1);
+            while let Some(done) = progress_rx.recv().await {
+                if last_emit.elapsed() < std::time::Duration::from_millis(120) {
+                    continue;
+                }
+                last_emit = std::time::Instant::now();
+                let elapsed = start.elapsed().as_secs_f64().max(0.001);
+                let speed = (done as f64 / elapsed) as u64;
+                let _ = progress_qt_thread.queue(move |mut model| {
+                    model.as_mut().set_transfer_done_bytes(done as i64);
+                    model
+                        .as_mut()
+                        .set_transfer_speed_label(QString::from(&format!(
+                            "{}/s",
+                            fm_core::ops::format_bytes(speed)
+                        )));
+                });
+            }
+        });
+
         runtime().spawn(async move {
             let result = if is_cut {
-                fm_core::ops::move_entry(&src, &dest).await
+                fm_core::ops::move_entry_with_progress(&src, &dest, done_counter, progress_tx)
+                    .await
             } else {
-                fm_core::ops::copy(&src, &dest).await
+                fm_core::ops::copy_with_progress(src.clone(), dest.clone(), done_counter, progress_tx)
+                    .await
             };
             let _ = qt_thread.queue(move |mut model| {
                 if let Err(e) = result {
                     eprintln!("paste_entry failed: {e}");
                 }
                 model.as_mut().set_is_busy(false);
+                model.as_mut().set_transfer_done_bytes(0);
+                model.as_mut().set_transfer_total_bytes(0);
                 model.as_mut().refresh_entries_diff();
             });
         });

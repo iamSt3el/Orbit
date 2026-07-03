@@ -1,6 +1,16 @@
 use fm_core::ops;
 use std::fs;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tempfile::tempdir;
+
+#[test]
+fn format_bytes_uses_the_smallest_unit_that_keeps_the_number_readable() {
+    assert_eq!(ops::format_bytes(42), "42 B");
+    assert_eq!(ops::format_bytes(1536), "1.5 KB");
+    assert_eq!(ops::format_bytes(15 * 1024 * 1024), "15 MB");
+    assert_eq!(ops::format_bytes(1024 * 1024 * 1024), "1.0 GB");
+}
 
 #[tokio::test]
 async fn create_folder_makes_a_new_directory() {
@@ -118,4 +128,95 @@ async fn move_entry_relocates_a_directory_within_same_filesystem() {
 
     assert!(!src.exists());
     assert_eq!(fs::read_to_string(dst.join("inner.txt")).unwrap(), "x");
+}
+
+#[test]
+fn path_size_of_a_single_file_is_its_byte_length() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("data.bin");
+    fs::write(&file, vec![0u8; 12345]).unwrap();
+
+    assert_eq!(ops::path_size(&file), 12345);
+}
+
+#[test]
+fn path_size_of_a_directory_sums_every_file_in_the_tree() {
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("tree");
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("a.txt"), vec![0u8; 100]).unwrap();
+    fs::create_dir(root.join("nested")).unwrap();
+    fs::write(root.join("nested").join("b.txt"), vec![0u8; 250]).unwrap();
+
+    assert_eq!(ops::path_size(&root), 350);
+}
+
+#[tokio::test]
+async fn copy_with_progress_copies_the_file_and_reports_the_final_total() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("source.bin");
+    let payload = vec![7u8; 500_000]; // bigger than the 256KB chunk size
+    fs::write(&src, &payload).unwrap();
+    let dst = dir.path().join("dest.bin");
+
+    let done = Arc::new(AtomicU64::new(0));
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+    ops::copy_with_progress(src.clone(), dst.clone(), done.clone(), tx)
+        .await
+        .unwrap();
+
+    assert_eq!(fs::read(&dst).unwrap(), payload);
+    assert_eq!(done.load(Ordering::Relaxed), 500_000);
+
+    // The channel should have received at least one update, and the final
+    // (largest) one should equal the total.
+    let mut last = 0u64;
+    while let Ok(value) = rx.try_recv() {
+        last = value;
+    }
+    assert_eq!(last, 500_000);
+}
+
+#[tokio::test]
+async fn copy_with_progress_copies_a_directory_tree() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("srcdir");
+    fs::create_dir(&src).unwrap();
+    fs::write(src.join("a.txt"), b"aaa").unwrap();
+    fs::create_dir(src.join("nested")).unwrap();
+    fs::write(src.join("nested").join("b.txt"), b"bb").unwrap();
+    let dst = dir.path().join("dstdir");
+
+    let done = Arc::new(AtomicU64::new(0));
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+
+    ops::copy_with_progress(src.clone(), dst.clone(), done.clone(), tx)
+        .await
+        .unwrap();
+
+    assert_eq!(fs::read_to_string(dst.join("a.txt")).unwrap(), "aaa");
+    assert_eq!(
+        fs::read_to_string(dst.join("nested").join("b.txt")).unwrap(),
+        "bb"
+    );
+    assert_eq!(done.load(Ordering::Relaxed), 5);
+}
+
+#[tokio::test]
+async fn move_entry_with_progress_relocates_within_same_filesystem() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("a.txt");
+    fs::write(&src, b"hello").unwrap();
+    let dst = dir.path().join("b.txt");
+
+    let done = Arc::new(AtomicU64::new(0));
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+
+    ops::move_entry_with_progress(&src, &dst, done, tx)
+        .await
+        .unwrap();
+
+    assert!(!src.exists());
+    assert_eq!(fs::read_to_string(&dst).unwrap(), "hello");
 }

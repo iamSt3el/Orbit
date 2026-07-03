@@ -329,9 +329,4 @@ Window {
         confirmLabel: "Delete"
         onConfirmed: fileModel.deleteEntry(window._pendingDeleteName)
     }
-
-    BusySnackbar {
-        active: fileModel.isBusy
-        label: fileModel.busyLabel
-    }
 }

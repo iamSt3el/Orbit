@@ -41,7 +41,8 @@ fn main() {
                 "qml/components/RenameDialog.qml",
                 "qml/components/PropertiesDialog.qml",
                 "qml/components/ConfirmDialog.qml",
-                "qml/components/BusySnackbar.qml",
+                "qml/components/LinearWavyProgressBar.qml",
+                "qml/components/TransferStatus.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))

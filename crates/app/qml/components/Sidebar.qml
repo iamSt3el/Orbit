@@ -25,7 +25,13 @@ Rectangle {
     ]
 
     Column {
-        anchors.fill: parent
+        // Anchored to the top (not anchors.fill) so it doesn't contest
+        // space with TransferStatus, which is independently pinned to the
+        // bottom below — the shortcuts list is short and fixed, so the
+        // leftover space between them is just empty, not a layout fight.
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
         anchors.margins: 10
         spacing: 0
 
@@ -150,5 +156,17 @@ Rectangle {
                 }
             }
         }
+    }
+
+    TransferStatus {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 10
+        active: root.fileModel ? root.fileModel.isBusy : false
+        label: root.fileModel ? root.fileModel.busyLabel : ""
+        doneBytes: root.fileModel ? root.fileModel.transferDoneBytes : 0
+        totalBytes: root.fileModel ? root.fileModel.transferTotalBytes : 0
+        speedLabel: root.fileModel ? root.fileModel.transferSpeedLabel : ""
     }
 }

@@ -61,21 +61,31 @@ Item {
             }
         }
 
+        // A flexible spacer on each side of PathBar, equal weight, is what
+        // centers it in the row — matched pair, not just "fill the rest".
+        Item {
+            Layout.fillWidth: true
+        }
+
         PathBar {
             id: pathBar
             Layout.preferredHeight: 40
             // Fixed-width pill in both states, never stretched to fill the
-            // header — matches the compact reference design rather than a
-            // full-width bar. Search is half the width of the plain path
+            // header. Search is roughly half the width of the plain path
             // display.
-            Layout.preferredWidth: pathBar.searching ? 130 : 260
+            Layout.preferredWidth: pathBar.searching ? 220 : 420
             path: root.title
             fileModel: root.fileModel
         }
 
+        Item {
+            Layout.fillWidth: true
+        }
+
         // Shape-morph loader — visible only while a background file
-        // operation (copy/move, see BusySnackbar) is running. Kept small
-        // and out of the way; the snackbar carries the actual status text.
+        // operation (copy/move) is running. The sidebar's TransferStatus
+        // carries the actual detail (speed/done/total); this is just an
+        // ambient "something is happening" cue near the trailing controls.
         ShapeLoader {
             Layout.preferredWidth: 20
             Layout.preferredHeight: 20
@@ -83,12 +93,6 @@ Item {
             visible: root.fileModel && root.fileModel.isBusy
             running: visible
             color: Color.scheme.primary
-        }
-
-        Item {
-            // Absorbs whatever space PathBar doesn't use, so the trailing
-            // controls stay pinned to the right instead of hugging the path.
-            Layout.fillWidth: true
         }
 
         // View options (hidden files / sort / icon size) — same hover-circle
