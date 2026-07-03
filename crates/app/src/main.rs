@@ -1,3 +1,5 @@
+mod file_list_model;
+
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 
 fn main() {
