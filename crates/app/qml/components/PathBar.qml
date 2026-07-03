@@ -107,5 +107,10 @@ Rectangle {
                 }
             }
         }
+
+        Tooltip {
+            text: root.searching ? "Clear search" : "Search"
+            hovered: _iconArea.containsMouse
+        }
     }
 }

@@ -8,6 +8,7 @@ Item {
     property bool destructive: false
     property string text: ""
     property string icon: ""
+    property string tooltip: ""
     signal clicked
 
     implicitWidth: _row.implicitWidth + 48
@@ -47,6 +48,11 @@ Item {
             hoverColor: Qt.alpha(root._labelColor, 0.08)
             rippleColor: Qt.alpha(root._labelColor, 0.2)
             onClicked: root.clicked()
+        }
+
+        Tooltip {
+            text: root.tooltip
+            hovered: pressArea.containsMouse
         }
     }
 

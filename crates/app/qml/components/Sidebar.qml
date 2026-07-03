@@ -81,6 +81,11 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.settingsRequested()
                 }
+
+                Tooltip {
+                    text: "Settings"
+                    hovered: _settingsArea.containsMouse
+                }
             }
         }
 

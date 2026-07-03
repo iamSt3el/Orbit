@@ -96,6 +96,7 @@ Item {
                     }
 
                     Ripple {
+                        id: _ripple
                         anchors.fill: parent
                         topLeftRadius:     (seg.isFirst || seg.active) ? root.fullRadius : root.innerRadius
                         bottomLeftRadius:  (seg.isFirst || seg.active) ? root.fullRadius : root.innerRadius
@@ -104,6 +105,12 @@ Item {
                         hoverColor:  Qt.alpha(seg.active ? root.activeTextColor : Color.scheme.primary, 0.08)
                         rippleColor: Qt.alpha(seg.active ? root.activeTextColor : Color.scheme.primary, 0.25)
                         onClicked: root.segmentClicked(seg.modelData.value)
+                    }
+
+                    Tooltip {
+                        text: seg.modelData.tooltip ?? ""
+                        anchorItem: seg
+                        hovered: _ripple.containsMouse
                     }
                 }
             }

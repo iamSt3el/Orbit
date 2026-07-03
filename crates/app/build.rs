@@ -24,6 +24,7 @@ fn main() {
                 "qml/shapes/ShapeCanvas.qml",
                 "qml/components/Ripple.qml",
                 "qml/components/Icon.qml",
+                "qml/components/Tooltip.qml",
                 "qml/components/Button.qml",
                 "qml/components/ButtonGroup.qml",
                 "qml/components/ShapeLoader.qml",

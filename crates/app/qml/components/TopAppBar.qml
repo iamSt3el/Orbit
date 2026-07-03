@@ -59,6 +59,11 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.backClicked()
             }
+
+            Tooltip {
+                text: "Back"
+                hovered: root.showBackButton && _backArea.containsMouse
+            }
         }
 
         // A flexible spacer on each side of PathBar, equal weight, is what
@@ -127,6 +132,11 @@ Item {
                     root.optionsRequested(scenePos.x, scenePos.y)
                 }
             }
+
+            Tooltip {
+                text: "View options"
+                hovered: _optionsArea.containsMouse
+            }
         }
 
         ButtonGroup {
@@ -134,8 +144,8 @@ Item {
             Layout.preferredHeight: 32
             iconSize: 16
             model: [
-                { value: "list", icon: "view_list" },
-                { value: "grid", icon: "grid_view" }
+                { value: "list", icon: "view_list", tooltip: "List view" },
+                { value: "grid", icon: "grid_view", tooltip: "Grid view" }
             ]
             activeCheck: (value) => value === root.viewMode
             onSegmentClicked: (value) => {
