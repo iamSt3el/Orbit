@@ -16,11 +16,42 @@ Window {
             : "/home")
     }
 
-    ListView {
+    Column {
         anchors.fill: parent
-        model: fileModel
-        delegate: Text {
-            text: (isDir ? "[dir] " : "") + name + " (" + size + ")"
+
+        Row {
+            Text {
+                text: "New folder name:"
+            }
+            TextInput {
+                id: newFolderName
+                width: 150
+            }
+            Text {
+                text: "[create]"
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: fileModel.createFolder(newFolderName.text)
+                }
+            }
+        }
+
+        ListView {
+            width: parent.width
+            height: parent.height - 40
+            model: fileModel
+            delegate: Row {
+                Text {
+                    text: (isDir ? "[dir] " : "") + name + " (" + size + ")"
+                }
+                Text {
+                    text: "  [delete]"
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: fileModel.deleteEntry(name)
+                    }
+                }
+            }
         }
     }
 }

@@ -56,6 +56,17 @@ pub mod qobject {
         #[qinvokable]
         fn navigate(self: Pin<&mut FileListModel>, path: &QString);
     }
+
+    unsafe extern "RustQt" {
+        #[qinvokable]
+        fn create_folder(self: Pin<&mut FileListModel>, name: &QString);
+
+        #[qinvokable]
+        fn rename_entry(self: Pin<&mut FileListModel>, old_name: &QString, new_name: &QString);
+
+        #[qinvokable]
+        fn delete_entry(self: Pin<&mut FileListModel>, name: &QString);
+    }
 }
 
 use cxx_qt::CxxQtType;
@@ -139,5 +150,46 @@ impl qobject::FileListModel {
         self.as_mut().end_reset_model();
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
+    }
+
+    fn create_folder(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to create Tokio runtime");
+        if let Err(e) = rt.block_on(fm_core::ops::create_folder(&current, &name.to_string())) {
+            eprintln!("create_folder failed: {e}");
+        }
+        let refresh_path = QString::from(&current.display().to_string());
+        self.as_mut().navigate(&refresh_path);
+    }
+
+    fn rename_entry(mut self: core::pin::Pin<&mut Self>, old_name: &QString, new_name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let target = current.join(old_name.to_string());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to create Tokio runtime");
+        if let Err(e) = rt.block_on(fm_core::ops::rename(&target, &new_name.to_string())) {
+            eprintln!("rename failed: {e}");
+        }
+        let refresh_path = QString::from(&current.display().to_string());
+        self.as_mut().navigate(&refresh_path);
+    }
+
+    fn delete_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let target = current.join(name.to_string());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to create Tokio runtime");
+        if let Err(e) = rt.block_on(fm_core::trash::move_to_trash(&target)) {
+            eprintln!("delete_entry failed: {e}");
+        }
+        let refresh_path = QString::from(&current.display().to_string());
+        self.as_mut().navigate(&refresh_path);
     }
 }
