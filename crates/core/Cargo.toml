@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+mime_guess = "2"
+infer = "0.16"
 
 [dev-dependencies]
 tempfile = "3"
