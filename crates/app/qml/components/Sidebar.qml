@@ -4,7 +4,8 @@ import com.filemanager.app 1.0
 // Sizing/coloring/animation deliberately mirrors the nav rows in the
 // user's quickshell "Nebula" settings app (SettingsContent.qml): 38px row
 // height, 18px icon, 8px icon-label spacing, a filled `primary` pill (not
-// a lighter tonal tint) on active/hover, and a slight scale bounce.
+// a lighter tonal tint) on the active row, and a slight scale bounce.
+// Inactive rows show no hover feedback at all — only selection state.
 Rectangle {
     id: root
 
@@ -96,7 +97,9 @@ Rectangle {
                 required property var modelData
 
                 readonly property bool isActive: modelData.path.length > 0 && modelData.path === root.currentPath
-                readonly property bool highlighted: isActive || _area.containsMouse
+                // Only the active (selected) row is highlighted — no hover
+                // feedback on the others.
+                readonly property bool highlighted: isActive
 
                 width: parent.width
                 implicitHeight: 38

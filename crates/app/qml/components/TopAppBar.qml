@@ -64,20 +64,19 @@ Item {
         PathBar {
             id: pathBar
             Layout.preferredHeight: 40
-            // A full-width search box reads oddly large for what's usually
-            // a short query — only the plain path display fills the row;
-            // searching collapses it to a small, fixed-width field.
-            Layout.fillWidth: !pathBar.searching
-            Layout.preferredWidth: pathBar.searching ? 220 : -1
+            // Fixed-width pill in both states, never stretched to fill the
+            // header — matches the compact reference design rather than a
+            // full-width bar. Search is half the width of the plain path
+            // display.
+            Layout.preferredWidth: pathBar.searching ? 130 : 260
             path: root.title
             fileModel: root.fileModel
         }
 
         Item {
-            // Absorbs the space PathBar gives up while collapsed for
-            // search, so the trailing controls stay pinned to the right
-            // instead of drifting inward.
-            Layout.fillWidth: pathBar.searching
+            // Absorbs whatever space PathBar doesn't use, so the trailing
+            // controls stay pinned to the right instead of hugging the path.
+            Layout.fillWidth: true
         }
 
         // View options (hidden files / sort / icon size) — same hover-circle
