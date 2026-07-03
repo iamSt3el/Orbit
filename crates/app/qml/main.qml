@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import QtQuick.Layouts
 import com.filemanager.app 1.0
 
 Window {
@@ -58,27 +59,32 @@ Window {
     // surfaceContainerHigh fill and independent corner radius is what
     // visually separates it, not a literal gutter. Unlike Nebula's
     // per-page dialog, there's no separate app-wide top bar: the "right
-    // layout" (back button, path, theme toggle, list/grid switch) lives
-    // inside the content pane as its own header, and the sidebar gets its
-    // own header (title + settings entry point) instead.
-    Column {
+    // layout" (back button, path/search, theme toggle, list/grid switch)
+    // lives inside the content pane as its own header, and the sidebar
+    // gets its own header (title + settings entry point) instead.
+    //
+    // Built with RowLayout/ColumnLayout rather than plain Row/Column so
+    // fill-space sizing (the content pane, the grid/list area, the header)
+    // is handled by Layout.fillWidth/fillHeight instead of hand-computed
+    // "parent.width - 200" arithmetic.
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
         spacing: 12
 
         Rectangle {
-            width: parent.width
-            height: parent.height
+            Layout.fillWidth: true
+            Layout.fillHeight: true
             radius: 20
             color: Color.scheme.surfaceContainer
             clip: true
 
-            Row {
+            RowLayout {
                 anchors.fill: parent
                 spacing: 0
 
                 Sidebar {
-                    height: parent.height
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: 200
                     fileModel: fileModel
                     currentPath: fileModel.currentPath ? fileModel.currentPath : ""
                     onSettingsRequested: {
@@ -86,17 +92,26 @@ Window {
                     }
                 }
 
-                Item {
-                    id: contentArea
-                    width: parent.width - 200
-                    height: parent.height
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 0
 
                     TopAppBar {
                         id: contentHeader
-                        width: parent.width
+                        Layout.fillWidth: true
+                        // Fixed, not just preferred — without min/max
+                        // pinned to the same value the header could be
+                        // compressed by the layout, and the file view
+                        // below (sized from contentHeader.height) would
+                        // creep up underneath it.
+                        Layout.preferredHeight: 56
+                        Layout.minimumHeight: 56
+                        Layout.maximumHeight: 56
                         title: fileModel.currentPath ? fileModel.currentPath : ""
                         showBackButton: fileModel.currentPath && fileModel.currentPath !== "/"
                         viewMode: window.viewMode
+                        fileModel: fileModel
                         onBackClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
                         onListViewRequested: window.viewMode = "list"
                         onGridViewRequested: window.viewMode = "grid"
@@ -104,115 +119,115 @@ Window {
 
                     Item {
                         id: fileViewArea
-                        anchors.top: contentHeader.bottom
-                        width: parent.width
-                        height: parent.height - contentHeader.height
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
 
-                    Component {
-                        id: listComponent
+                        Component {
+                            id: listComponent
 
-                        ListView {
-                            id: listView
-                            anchors.fill: parent
-                            anchors.margins: 4
-                            anchors.rightMargin: 14
-                            model: fileModel
-                            spacing: 2
-                            reuseItems: true
-                            cacheBuffer: 400
-                            acceptedButtons: Qt.NoButton
-                            delegate: FileListItem {
-                                onContextMenuRequested: (x, y) =>
-                                    itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
-                            }
-
-                            MouseArea {
-                                // Stacked below the delegates (which live inside
-                                // listView's contentItem) so a right-click over an
-                                // item reaches FileListItem's own MouseArea first;
-                                // this one only fires for clicks that miss every
-                                // delegate, i.e. genuinely empty space.
-                                id: listBackgroundArea
-                                z: -1
+                            ListView {
+                                id: listView
                                 anchors.fill: parent
-                                acceptedButtons: Qt.RightButton
-                                onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
-                                onClicked: (mouse) => {
-                                    var scenePos = listBackgroundArea.mapToItem(null, mouse.x, mouse.y)
-                                    contextMenu.popup(scenePos.x, scenePos.y)
+                                anchors.margins: 4
+                                anchors.rightMargin: 14
+                                model: fileModel
+                                spacing: 2
+                                reuseItems: true
+                                cacheBuffer: 400
+                                acceptedButtons: Qt.NoButton
+                                delegate: FileListItem {
+                                    onContextMenuRequested: (x, y) =>
+                                        itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
+                                }
+
+                                MouseArea {
+                                    // Stacked below the delegates (which live inside
+                                    // listView's contentItem) so a right-click over an
+                                    // item reaches FileListItem's own MouseArea first;
+                                    // this one only fires for clicks that miss every
+                                    // delegate, i.e. genuinely empty space.
+                                    id: listBackgroundArea
+                                    z: -1
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.RightButton
+                                    onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
+                                    onClicked: (mouse) => {
+                                        var scenePos = listBackgroundArea.mapToItem(null, mouse.x, mouse.y)
+                                        contextMenu.popup(scenePos.x, scenePos.y)
+                                    }
+                                }
+
+                                ScrollBar {
+                                    anchors.top: parent.top
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.rightMargin: -12
+                                    flickable: listView
                                 }
                             }
-
-                            ScrollBar {
-                                anchors.top: parent.top
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                anchors.rightMargin: -12
-                                flickable: listView
-                            }
                         }
-                    }
 
-                    Component {
-                        id: gridComponent
+                        Component {
+                            id: gridComponent
 
-                        GridView {
-                            id: gridView
-                            anchors.fill: parent
-                            anchors.margins: 4
-                            anchors.rightMargin: 14
-                            model: fileModel
-                            readonly property int minCellWidth: 110
-                            readonly property int columns: Math.max(1, Math.floor(width / minCellWidth))
-                            // Not Math.floor()'d — GridView's cellWidth accepts a
-                            // fractional value fine, and truncating it here would
-                            // leave up to (columns - 1) px of unfilled space on
-                            // the right, which is exactly the bug this is fixing.
-                            cellWidth: width / columns
-                            cellHeight: 132
-                            reuseItems: true
-                            cacheBuffer: 400
-                            acceptedButtons: Qt.NoButton
-                            // GridView doesn't always relayout existing cells when
-                            // cellWidth changes mid-flight (e.g. the panel resizing
-                            // after the grid already has content) — force it so a
-                            // resize can't leave the last recomputed cellWidth
-                            // stale and the row short of the panel's right edge.
-                            onWidthChanged: forceLayout()
-                            delegate: FileGridItem {
-                                onContextMenuRequested: (x, y) =>
-                                    itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
-                            }
-
-                            MouseArea {
-                                // See the matching comment in the ListView's
-                                // overlay above — kept below the delegates in
-                                // z-order so per-item right-clicks win.
-                                id: gridBackgroundArea
-                                z: -1
+                            GridView {
+                                id: gridView
                                 anchors.fill: parent
-                                acceptedButtons: Qt.RightButton
-                                onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
-                                onClicked: (mouse) => {
-                                    var scenePos = gridBackgroundArea.mapToItem(null, mouse.x, mouse.y)
-                                    contextMenu.popup(scenePos.x, scenePos.y)
+                                anchors.margins: 4
+                                anchors.rightMargin: 14
+                                model: fileModel
+                                readonly property int minCellWidth: 110
+                                readonly property int columns: Math.max(1, Math.floor(width / minCellWidth))
+                                // Not Math.floor()'d — GridView's cellWidth accepts a
+                                // fractional value fine, and truncating it here would
+                                // leave up to (columns - 1) px of unfilled space on
+                                // the right, which is exactly the bug this is fixing.
+                                cellWidth: width / columns
+                                cellHeight: 132
+                                reuseItems: true
+                                cacheBuffer: 400
+                                acceptedButtons: Qt.NoButton
+                                // GridView doesn't always relayout existing cells when
+                                // cellWidth changes mid-flight (e.g. the panel resizing
+                                // after the grid already has content) — force it so a
+                                // resize can't leave the last recomputed cellWidth
+                                // stale and the row short of the panel's right edge.
+                                onWidthChanged: forceLayout()
+                                delegate: FileGridItem {
+                                    onContextMenuRequested: (x, y) =>
+                                        itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
+                                }
+
+                                MouseArea {
+                                    // See the matching comment in the ListView's
+                                    // overlay above — kept below the delegates in
+                                    // z-order so per-item right-clicks win.
+                                    id: gridBackgroundArea
+                                    z: -1
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.RightButton
+                                    onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
+                                    onClicked: (mouse) => {
+                                        var scenePos = gridBackgroundArea.mapToItem(null, mouse.x, mouse.y)
+                                        contextMenu.popup(scenePos.x, scenePos.y)
+                                    }
+                                }
+
+                                ScrollBar {
+                                    anchors.top: parent.top
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.rightMargin: -12
+                                    flickable: gridView
                                 }
                             }
-
-                            ScrollBar {
-                                anchors.top: parent.top
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                anchors.rightMargin: -12
-                                flickable: gridView
-                            }
                         }
-                    }
 
-                    Loader {
-                        anchors.fill: parent
-                        sourceComponent: window.viewMode === "grid" ? gridComponent : listComponent
-                    }
+                        Loader {
+                            anchors.fill: parent
+                            sourceComponent: window.viewMode === "grid" ? gridComponent : listComponent
+                        }
                     }
                 }
             }

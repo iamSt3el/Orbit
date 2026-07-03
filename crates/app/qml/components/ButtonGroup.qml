@@ -32,7 +32,7 @@ Item {
     readonly property real innerRadius: 4
     readonly property real gap: 2
 
-    height: 40
+    height: 32
     implicitWidth: fillWidth ? root.width : _row.implicitWidth
 
     Row {

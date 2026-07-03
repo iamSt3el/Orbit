@@ -12,6 +12,7 @@ Item {
     property string title: ""
     property bool showBackButton: false
     property string viewMode: "list" // "list" | "grid"
+    property var fileModel
     signal backClicked
     signal listViewRequested
     signal gridViewRequested
@@ -55,18 +56,14 @@ Item {
         }
     }
 
-    Text {
+    PathBar {
         anchors.left: backButton.visible ? backButton.right : parent.left
-        anchors.leftMargin: backButton.visible ? 12 : 24
+        anchors.leftMargin: backButton.visible ? 12 : 16
         anchors.right: themeToggle.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
-        text: root.title
-        color: Color.scheme.surfaceText
-        font.family: Type.titleLargeEmphasized.family
-        font.weight: Type.titleLargeEmphasized.weight
-        font.pixelSize: Type.titleLargeEmphasized.size
-        elide: Text.ElideMiddle
+        path: root.title
+        fileModel: root.fileModel
     }
 
     // Dark/light theme toggle — same hover-circle pattern as the back

@@ -31,6 +31,7 @@ fn main() {
                 "qml/components/FileListItem.qml",
                 "qml/components/FileGridItem.qml",
                 "qml/components/TopAppBar.qml",
+                "qml/components/PathBar.qml",
                 "qml/components/ScrollBar.qml",
                 "qml/components/Sidebar.qml",
                 "qml/components/ContextMenu.qml",
@@ -48,5 +49,6 @@ fn main() {
     )
     .file("src/file_list_model.rs")
     .qt_module("Gui")
+    .qt_module("QuickLayouts")
     .build();
 }

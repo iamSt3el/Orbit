@@ -116,6 +116,12 @@ pub mod qobject {
         #[cxx_name = "folderSize"]
         fn folder_size(self: &FileListModel, name: &QString) -> i64;
     }
+
+    unsafe extern "RustQt" {
+        #[qinvokable]
+        #[cxx_name = "setSearchQuery"]
+        fn set_search_query(self: Pin<&mut FileListModel>, query: &QString);
+    }
 }
 
 use cxx_qt::CxxQtType;
@@ -138,6 +144,7 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 
 pub struct FileListModelRust {
     entries: Vec<fm_core::FileEntry>,
+    search_query: QString,
     current_path: QString,
     home_path: QString,
     downloads_path: QString,
@@ -153,6 +160,7 @@ impl Default for FileListModelRust {
     fn default() -> Self {
         Self {
             entries: Vec::new(),
+            search_query: QString::from(""),
             current_path: QString::from(""),
             home_path: path_or_empty(fm_core::paths::home_dir()),
             downloads_path: path_or_empty(fm_core::paths::download_dir()),
@@ -195,17 +203,37 @@ async fn gather_entries(path: &std::path::Path) -> Vec<fm_core::FileEntry> {
     entries
 }
 
+/// Indices into `entries` matching the current search query (all of them,
+/// in order, when the query is empty). Recomputed on demand rather than
+/// cached — directory sizes here are small enough (hundreds to low
+/// thousands of entries) that a fresh linear scan per `data()`/`row_count()`
+/// call is not a measurable cost, and it keeps the create/rename/delete
+/// diff logic below untouched by search entirely.
+fn matching_indices(entries: &[fm_core::FileEntry], query: &str) -> Vec<usize> {
+    if query.is_empty() {
+        return (0..entries.len()).collect();
+    }
+    let query = query.to_lowercase();
+    entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.name.to_lowercase().contains(&query))
+        .map(|(i, _)| i)
+        .collect()
+}
+
 impl qobject::FileListModel {
     fn row_count(&self, _parent: &cxx_qt_lib::QModelIndex) -> i32 {
-        self.entries.len() as i32
+        matching_indices(&self.entries, &self.search_query.to_string()).len() as i32
     }
 
     fn data(&self, index: &cxx_qt_lib::QModelIndex, role: i32) -> QVariant {
         let row = index.row();
-        if row < 0 || row as usize >= self.entries.len() {
+        let matching = matching_indices(&self.entries, &self.search_query.to_string());
+        if row < 0 || row as usize >= matching.len() {
             return QVariant::default();
         }
-        let entry = &self.entries[row as usize];
+        let entry = &self.entries[matching[row as usize]];
         match role {
             NAME_ROLE => QVariant::from(&QString::from(&entry.name)),
             IS_DIR_ROLE => QVariant::from(&entry.is_dir),
@@ -236,9 +264,18 @@ impl qobject::FileListModel {
 
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().entries = entries;
+        // A search filter from the previous directory shouldn't silently
+        // carry over and hide entries in the new one.
+        self.as_mut().rust_mut().search_query = QString::from("");
         self.as_mut().end_reset_model();
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
+    }
+
+    fn set_search_query(mut self: core::pin::Pin<&mut Self>, query: &QString) {
+        self.as_mut().begin_reset_model();
+        self.as_mut().rust_mut().search_query = query.clone();
+        self.as_mut().end_reset_model();
     }
 
     fn create_folder(mut self: core::pin::Pin<&mut Self>, name: &QString) {
@@ -283,6 +320,17 @@ impl qobject::FileListModel {
     fn apply_entries_diff(mut self: core::pin::Pin<&mut Self>, new_entries: Vec<fm_core::FileEntry>) {
         fn same_entry(a: &fm_core::FileEntry, b: &fm_core::FileEntry) -> bool {
             a.name == b.name && a.is_dir == b.is_dir
+        }
+
+        if !self.search_query.to_string().is_empty() {
+            // The row-level diff below assumes model rows map 1:1 onto
+            // `entries` indices, which only holds when nothing is
+            // filtered out — fall back to a plain reset while a search is
+            // active rather than computing wrong row indices.
+            self.as_mut().begin_reset_model();
+            self.as_mut().rust_mut().entries = new_entries;
+            self.as_mut().end_reset_model();
+            return;
         }
 
         let old_entries = self.entries.clone();
