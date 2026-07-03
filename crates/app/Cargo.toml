@@ -1,0 +1,14 @@
+[package]
+name = "fm-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fm-core = { path = "../core" }
+cxx = "1"
+cxx-qt = "0.9"
+cxx-qt-lib = { version = "0.9", features = ["qt_gui", "qt_qml"] }
+tokio = { version = "1", features = ["full"] }
+
+[build-dependencies]
+cxx-qt-build = "0.9"
