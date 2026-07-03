@@ -51,39 +51,26 @@ pub mod qobject {
         #[cxx_name = "endResetModel"]
         fn end_reset_model(self: Pin<&mut FileListModel>);
     }
+
+    unsafe extern "RustQt" {
+        #[qinvokable]
+        fn navigate(self: Pin<&mut FileListModel>, path: &QString);
+    }
 }
 
+use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QByteArray, QHash, QHashPair_i32_QByteArray, QString, QVariant};
-
-pub struct Entry {
-    pub name: String,
-    pub is_dir: bool,
-    pub size: i64,
-    pub icon_key: String,
-}
+use std::path::PathBuf;
 
 pub struct FileListModelRust {
-    entries: Vec<Entry>,
+    entries: Vec<fm_core::FileEntry>,
     current_path: QString,
 }
 
 impl Default for FileListModelRust {
     fn default() -> Self {
         Self {
-            entries: vec![
-                Entry {
-                    name: "example.txt".to_string(),
-                    is_dir: false,
-                    size: 1234,
-                    icon_key: "text".to_string(),
-                },
-                Entry {
-                    name: "Documents".to_string(),
-                    is_dir: true,
-                    size: 0,
-                    icon_key: "folder".to_string(),
-                },
-            ],
+            entries: Vec::new(),
             current_path: QString::from(""),
         }
     }
@@ -93,6 +80,22 @@ const NAME_ROLE: i32 = 0x0100;
 const IS_DIR_ROLE: i32 = 0x0101;
 const SIZE_ROLE: i32 = 0x0102;
 const ICON_KEY_ROLE: i32 = 0x0103;
+
+async fn gather_entries(path: &std::path::Path) -> Vec<fm_core::FileEntry> {
+    let mut rx = fm_core::listing::list_directory(path.to_path_buf());
+    let mut entries = Vec::new();
+    while let Some(result) = rx.recv().await {
+        if let Ok(entry) = result {
+            entries.push(entry);
+        }
+    }
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
+    });
+    entries
+}
 
 impl qobject::FileListModel {
     fn row_count(&self, _parent: &cxx_qt_lib::QModelIndex) -> i32 {
@@ -108,7 +111,7 @@ impl qobject::FileListModel {
         match role {
             NAME_ROLE => QVariant::from(&QString::from(&entry.name)),
             IS_DIR_ROLE => QVariant::from(&entry.is_dir),
-            SIZE_ROLE => QVariant::from(&entry.size),
+            SIZE_ROLE => QVariant::from(&(entry.size as i64)),
             ICON_KEY_ROLE => QVariant::from(&QString::from(&entry.icon_key)),
             _ => QVariant::default(),
         }
@@ -121,5 +124,20 @@ impl qobject::FileListModel {
         roles.insert(SIZE_ROLE, QByteArray::from("size"));
         roles.insert(ICON_KEY_ROLE, QByteArray::from("iconKey"));
         roles
+    }
+
+    fn navigate(mut self: core::pin::Pin<&mut Self>, path: &QString) {
+        let path_buf = PathBuf::from(path.to_string());
+        let entries = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to create Tokio runtime")
+            .block_on(gather_entries(&path_buf));
+
+        self.as_mut().begin_reset_model();
+        self.as_mut().rust_mut().entries = entries;
+        self.as_mut().end_reset_model();
+        self.as_mut()
+            .set_current_path(QString::from(&path_buf.display().to_string()));
     }
 }
