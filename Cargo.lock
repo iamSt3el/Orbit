@@ -390,6 +390,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fm-xtask"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
