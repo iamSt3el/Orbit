@@ -13,6 +13,7 @@ pub struct Settings {
     pub sort_ascending: bool,
     pub show_hidden: bool,
     pub last_path: String,
+    pub resume_last_path: bool,
 }
 
 impl Default for Settings {
@@ -24,6 +25,7 @@ impl Default for Settings {
             sort_ascending: true,
             show_hidden: false,
             last_path: String::new(),
+            resume_last_path: true,
         }
     }
 }

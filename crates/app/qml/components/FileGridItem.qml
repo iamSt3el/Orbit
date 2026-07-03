@@ -92,9 +92,9 @@ Item {
                 text: root.isDir ? "" : Format.formatBytes(root.size)
                 visible: text.length > 0
                 color: Color.scheme.surfaceVariantText
-                font.family: Type.bodyMedium.family
-                font.weight: Type.bodyMedium.weight
-                font.pixelSize: 11
+                font.family: Type.bodySmall.family
+                font.weight: Type.bodySmall.weight
+                font.pixelSize: Type.bodySmall.size
                 horizontalAlignment: Text.AlignHCenter
                 width: card.width - 16
                 anchors.horizontalCenter: parent.horizontalCenter

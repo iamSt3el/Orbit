@@ -14,7 +14,7 @@ Rectangle {
     signal settingsRequested
 
     width: 200
-    radius: 20
+    radius: Shape.largeIncreased
     color: Color.scheme.surfaceContainerHigh
 
     readonly property var _shortcuts: [
@@ -49,7 +49,7 @@ Rectangle {
                 color: Color.scheme.surfaceText
                 font.family: Type.titleLarge.family
                 font.weight: Font.Bold
-                font.pixelSize: 20
+                font.pixelSize: Type.titleLarge.size
             }
 
             Item {
@@ -89,10 +89,12 @@ Rectangle {
             leftPadding: 10
             topPadding: 8
             bottomPadding: 10
-            color: Color.scheme.outline
-            font.family: Type.labelLarge.family
-            font.weight: Type.labelLarge.weight
-            font.pixelSize: 12
+            // surfaceVariantText (on-surface-variant), not outline — outline
+            // is for borders/boundaries per the M3 spec, not text.
+            color: Color.scheme.surfaceVariantText
+            font.family: Type.labelMedium.family
+            font.weight: Type.labelMedium.weight
+            font.pixelSize: Type.labelMedium.size
         }
 
         Repeater {
@@ -112,7 +114,7 @@ Rectangle {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: 10
+                    radius: Shape.medium
                     color: navItem.highlighted ? Color.scheme.primary : "transparent"
                     Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -137,7 +139,7 @@ Rectangle {
                             color: navItem.highlighted ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
                             font.family: Type.bodyLarge.family
                             font.weight: navItem.isActive ? Font.Bold : Font.Medium
-                            font.pixelSize: 15
+                            font.pixelSize: Type.bodyLarge.size
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }

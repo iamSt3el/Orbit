@@ -34,6 +34,7 @@ fn save_then_load_round_trips() {
         sort_ascending: false,
         show_hidden: true,
         last_path: "/home/steel/Downloads".to_string(),
+        resume_last_path: false,
     };
     settings.save_to(&path).unwrap();
 

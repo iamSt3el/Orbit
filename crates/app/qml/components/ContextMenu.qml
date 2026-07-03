@@ -59,8 +59,8 @@ Item {
         id: menu
         width: 220
         height: _column.implicitHeight
-        radius: Shape.medium
-        color: Elevation.surfaceAt(3)
+        radius: Shape.small
+        color: Elevation.surfaceAt(2)
         clip: true
 
         Column {

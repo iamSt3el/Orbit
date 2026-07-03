@@ -31,6 +31,8 @@ pub mod qobject {
         #[qproperty(QString, view_mode, cxx_name = "viewMode")]
         #[qproperty(QString, icon_size_level, cxx_name = "iconSizeLevel")]
         #[qproperty(QString, saved_last_path, cxx_name = "savedLastPath")]
+        #[qproperty(bool, resume_last_path, cxx_name = "resumeLastPath")]
+        #[qproperty(QString, app_config_dir, cxx_name = "appConfigDir")]
         #[qproperty(bool, is_busy, cxx_name = "isBusy")]
         #[qproperty(QString, busy_label, cxx_name = "busyLabel")]
         #[qproperty(i64, transfer_done_bytes, cxx_name = "transferDoneBytes")]
@@ -236,6 +238,8 @@ pub struct FileListModelRust {
     view_mode: QString,
     icon_size_level: QString,
     saved_last_path: QString,
+    resume_last_path: bool,
+    app_config_dir: QString,
     is_busy: bool,
     busy_label: QString,
     transfer_done_bytes: i64,
@@ -280,6 +284,8 @@ impl Default for FileListModelRust {
             view_mode: QString::from(&settings.view_mode),
             icon_size_level: QString::from(&settings.icon_size_level),
             saved_last_path: QString::from(&settings.last_path),
+            resume_last_path: settings.resume_last_path,
+            app_config_dir: path_or_empty(fm_core::paths::app_config_dir()),
             is_busy: false,
             busy_label: QString::from(""),
             transfer_done_bytes: 0,
@@ -726,6 +732,7 @@ impl qobject::FileListModel {
             sort_ascending: self.sort_ascending,
             show_hidden: self.show_hidden,
             last_path: self.current_path.to_string(),
+            resume_last_path: self.resume_last_path,
         };
         if let Err(e) = settings.save() {
             eprintln!("save_settings failed: {e}");

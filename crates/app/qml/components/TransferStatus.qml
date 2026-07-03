@@ -64,16 +64,18 @@ Item {
                 anchors.left: parent.left
                 text: Format.formatBytes(root.doneBytes) + " / " + Format.formatBytes(root.totalBytes)
                 color: Color.scheme.surfaceVariantText
-                font.family: Type.labelLarge.family
-                font.pixelSize: 11
+                font.family: Type.bodySmall.family
+                font.weight: Type.bodySmall.weight
+                font.pixelSize: Type.bodySmall.size
             }
 
             Text {
                 anchors.right: parent.right
                 text: root.speedLabel
                 color: Color.scheme.surfaceVariantText
-                font.family: Type.labelLarge.family
-                font.pixelSize: 11
+                font.family: Type.bodySmall.family
+                font.weight: Type.bodySmall.weight
+                font.pixelSize: Type.bodySmall.size
             }
         }
     }

@@ -34,10 +34,11 @@ Window {
             // is ready.
             Color.applyCustomColors(fileModel.readThemeColorsFile())
             // CLI arg wins if given; otherwise resume wherever the last
-            // session left off; otherwise fall back to home.
+            // session left off (if that's enabled in Settings); otherwise
+            // fall back to home.
             var startPath = Qt.application.arguments.length > 1
                 ? Qt.application.arguments[1]
-                : (fileModel.savedLastPath.length > 0 ? fileModel.savedLastPath : "/home")
+                : (fileModel.resumeLastPath && fileModel.savedLastPath.length > 0 ? fileModel.savedLastPath : "/home")
             navigate(startPath)
         }
     }
@@ -94,7 +95,7 @@ Window {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            radius: 20
+            radius: Shape.largeIncreased
             color: Color.scheme.surfaceContainer
             clip: true
 
@@ -107,9 +108,7 @@ Window {
                     Layout.preferredWidth: 200
                     fileModel: fileModel
                     currentPath: fileModel.currentPath ? fileModel.currentPath : ""
-                    onSettingsRequested: {
-                        // No settings screen exists yet — nothing to open.
-                    }
+                    onSettingsRequested: settingsDialog.open()
                 }
 
                 ColumnLayout {
@@ -328,5 +327,10 @@ Window {
         title: "Move to Trash"
         confirmLabel: "Delete"
         onConfirmed: fileModel.deleteEntry(window._pendingDeleteName)
+    }
+
+    SettingsDialog {
+        id: settingsDialog
+        fileModel: fileModel
     }
 }

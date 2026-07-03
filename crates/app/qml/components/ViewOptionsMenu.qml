@@ -63,8 +63,8 @@ Item {
         id: menu
         width: 260
         height: _content.implicitHeight + 24
-        radius: Shape.medium
-        color: Elevation.surfaceAt(3)
+        radius: Shape.small
+        color: Elevation.surfaceAt(2)
 
         Column {
             id: _content
@@ -88,7 +88,7 @@ Item {
                 Rectangle {
                     width: 40
                     height: 22
-                    radius: 11
+                    radius: Shape.full
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     color: root.showHidden ? Color.scheme.primary : Color.scheme.surfaceContainerHighest
@@ -99,7 +99,7 @@ Item {
                     Rectangle {
                         width: 16
                         height: 16
-                        radius: 8
+                        radius: Shape.full
                         color: Color.scheme.surface
                         anchors.verticalCenter: parent.verticalCenter
                         x: root.showHidden ? parent.width - width - 3 : 3
@@ -131,8 +131,9 @@ Item {
                 topPadding: 8
                 bottomPadding: 4
                 color: Color.scheme.surfaceVariantText
-                font.family: Type.labelLarge.family
-                font.pixelSize: 12
+                font.family: Type.labelMedium.family
+                font.weight: Type.labelMedium.weight
+                font.pixelSize: Type.labelMedium.size
             }
 
             Repeater {
@@ -222,8 +223,9 @@ Item {
                 topPadding: 8
                 bottomPadding: 4
                 color: Color.scheme.surfaceVariantText
-                font.family: Type.labelLarge.family
-                font.pixelSize: 12
+                font.family: Type.labelMedium.family
+                font.weight: Type.labelMedium.weight
+                font.pixelSize: Type.labelMedium.size
             }
 
             ButtonGroup {

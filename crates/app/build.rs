@@ -41,6 +41,7 @@ fn main() {
                 "qml/components/RenameDialog.qml",
                 "qml/components/PropertiesDialog.qml",
                 "qml/components/ConfirmDialog.qml",
+                "qml/components/SettingsDialog.qml",
                 "qml/components/LinearWavyProgressBar.qml",
                 "qml/components/TransferStatus.qml",
             ])

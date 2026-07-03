@@ -15,7 +15,7 @@ Rectangle {
     property bool searching: false
 
     implicitHeight: 40
-    radius: 12
+    radius: Shape.small
     color: Color.scheme.surfaceContainerHighest
     border.width: 1
     border.color: Color.scheme.outlineVariant
