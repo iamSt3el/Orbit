@@ -23,6 +23,8 @@ fn main() {
                 "qml/components/Ripple.qml",
                 "qml/components/Icon.qml",
                 "qml/components/Button.qml",
+                "qml/components/FileListItem.qml",
+                "qml/components/TopAppBar.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))

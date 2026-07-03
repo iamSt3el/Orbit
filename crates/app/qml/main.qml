@@ -3,10 +3,12 @@ import QtQuick.Window
 import com.filemanager.app 1.0
 
 Window {
+    id: window
     width: 800
     height: 600
     visible: true
-    title: "File Manager — " + fileModel.currentPath
+    title: "File Manager"
+    color: Color.scheme.surface
 
     FileListModel {
         id: fileModel
@@ -19,38 +21,43 @@ Window {
     Column {
         anchors.fill: parent
 
+        TopAppBar {
+            width: parent.width
+            title: fileModel.currentPath
+        }
+
         Row {
-            Text {
-                text: "New folder name:"
-            }
+            width: parent.width
+            height: 56
+            spacing: 8
+            leftPadding: 16
+            topPadding: 8
+            bottomPadding: 8
+
             TextInput {
                 id: newFolderName
-                width: 150
+                width: 200
+                anchors.verticalCenter: parent.verticalCenter
+                color: Color.scheme.onSurface
+                font.family: Type.bodyLarge.family
+                font.pixelSize: Type.bodyLarge.size
             }
-            Text {
-                text: "[create]"
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: fileModel.createFolder(newFolderName.text)
-                }
+
+            Button {
+                variant: "tonal"
+                text: "New folder"
+                icon: "create_new_folder"
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: fileModel.createFolder(newFolderName.text)
             }
         }
 
         ListView {
             width: parent.width
-            height: parent.height - 40
+            height: parent.height - 64 - 56
             model: fileModel
-            delegate: Row {
-                Text {
-                    text: (isDir ? "[dir] " : "") + name + " (" + size + ")"
-                }
-                Text {
-                    text: "  [delete]"
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: fileModel.deleteEntry(name)
-                    }
-                }
+            delegate: FileListItem {
+                fileModel: fileModel
             }
         }
     }
