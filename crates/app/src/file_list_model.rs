@@ -11,6 +11,8 @@ pub mod qobject {
         type QHash_i32_QByteArray = cxx_qt_lib::QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
         include!("cxx-qt-lib/qbytearray.h");
         type QByteArray = cxx_qt_lib::QByteArray;
+        include!("cxx-qt-lib/core/qlist/qlist_i32.h");
+        type QList_i32 = cxx_qt_lib::QList<i32>;
     }
 
     unsafe extern "C++" {
@@ -86,6 +88,24 @@ pub mod qobject {
         #[inherit]
         #[cxx_name = "endRemoveRows"]
         fn end_remove_rows(self: Pin<&mut FileListModel>);
+
+        #[inherit]
+        #[cxx_name = "index"]
+        fn model_index(
+            self: &FileListModel,
+            row: i32,
+            column: i32,
+            parent: &QModelIndex,
+        ) -> QModelIndex;
+
+        #[inherit]
+        #[cxx_name = "dataChanged"]
+        fn data_changed(
+            self: Pin<&mut FileListModel>,
+            top_left: &QModelIndex,
+            bottom_right: &QModelIndex,
+            roles: &QList_i32,
+        );
     }
 
     unsafe extern "RustQt" {
@@ -138,6 +158,15 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "pasteEntry"]
         fn paste_entry(self: Pin<&mut FileListModel>);
+
+        /// Kicks off background thumbnail generation/lookup for one entry —
+        /// called from FileListItem/FileGridItem when a delegate holding an
+        /// image becomes visible, not eagerly for the whole folder, so a
+        /// directory with thousands of photos doesn't decode all of them at
+        /// once. No-ops if a thumbnail is already known or already pending.
+        #[qinvokable]
+        #[cxx_name = "requestThumbnail"]
+        fn request_thumbnail(self: Pin<&mut FileListModel>, name: &QString);
     }
 
     unsafe extern "RustQt" {
@@ -223,6 +252,20 @@ fn runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
+// Caps how many thumbnails can be decoded at once, process-wide. Without
+// this, opening a folder full of photos fires off a requestThumbnail() for
+// every delegate the grid/list instantiates up front (visible area plus
+// cacheBuffer) nearly simultaneously — each one fully decodes its source
+// image at native resolution before shrinking it, so e.g. 60 delegates on a
+// folder of 20-30MP photos meant 60 full-resolution decode buffers (tens of
+// MB each) alive in memory at once, easily reaching 1GB+. A small permit
+// count keeps peak memory bounded to a few decodes' worth regardless of how
+// many rows ask at once; the rest simply wait their turn.
+fn thumbnail_semaphore() -> &'static tokio::sync::Semaphore {
+    static SEMAPHORE: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+    SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(2))
+}
+
 pub struct FileListModelRust {
     entries: Vec<fm_core::FileEntry>,
     search_query: QString,
@@ -247,6 +290,11 @@ pub struct FileListModelRust {
     transfer_speed_label: QString,
     clipboard_path: Option<PathBuf>,
     clipboard_is_cut: bool,
+    /// Source paths currently being thumbnailed on a background task —
+    /// guards against re-spawning a duplicate task for the same entry if a
+    /// delegate re-requests it (e.g. scrolling it out and back into view)
+    /// before the first request has finished.
+    pending_thumbnails: std::collections::HashSet<PathBuf>,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -293,6 +341,7 @@ impl Default for FileListModelRust {
             transfer_speed_label: QString::from(""),
             clipboard_path: None,
             clipboard_is_cut: false,
+            pending_thumbnails: std::collections::HashSet::new(),
         }
     }
 }
@@ -304,6 +353,7 @@ const ICON_KEY_ROLE: i32 = 0x0103;
 const MODIFIED_ROLE: i32 = 0x0104;
 const MIME_TYPE_ROLE: i32 = 0x0105;
 const PERMISSIONS_ROLE: i32 = 0x0106;
+const THUMBNAIL_PATH_ROLE: i32 = 0x0107;
 
 fn format_modified(modified: std::time::SystemTime) -> String {
     use time::format_description::well_known::Iso8601;
@@ -388,6 +438,13 @@ impl qobject::FileListModel {
             MODIFIED_ROLE => QVariant::from(&QString::from(&format_modified(entry.modified))),
             MIME_TYPE_ROLE => QVariant::from(&QString::from(&entry.mime_type)),
             PERMISSIONS_ROLE => QVariant::from(&QString::from(&entry.permissions)),
+            THUMBNAIL_PATH_ROLE => QVariant::from(&QString::from(
+                &entry
+                    .thumbnail_path
+                    .as_ref()
+                    .map(|p| format!("file://{}", p.display()))
+                    .unwrap_or_default(),
+            )),
             _ => QVariant::default(),
         }
     }
@@ -401,6 +458,7 @@ impl qobject::FileListModel {
         roles.insert(MODIFIED_ROLE, QByteArray::from("modified"));
         roles.insert(MIME_TYPE_ROLE, QByteArray::from("mimeType"));
         roles.insert(PERMISSIONS_ROLE, QByteArray::from("permissions"));
+        roles.insert(THUMBNAIL_PATH_ROLE, QByteArray::from("thumbnailPath"));
         roles
     }
 
@@ -677,6 +735,96 @@ impl qobject::FileListModel {
                 model.as_mut().set_transfer_done_bytes(0);
                 model.as_mut().set_transfer_total_bytes(0);
                 model.as_mut().refresh_entries_diff();
+            });
+        });
+    }
+
+    fn request_thumbnail(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let source_path = current.join(name.to_string());
+
+        let Some(entry) = self.entries.iter().find(|e| e.path == source_path) else {
+            return;
+        };
+        if entry.thumbnail_path.is_some()
+            || !fm_core::thumbnails::is_thumbnailable(&entry.mime_type)
+            || self.pending_thumbnails.contains(&source_path)
+        {
+            return;
+        }
+
+        let request = fm_core::thumbnails::ThumbnailRequest {
+            source_path: source_path.clone(),
+            mime_type: entry.mime_type.clone(),
+            size: entry.size,
+            modified: entry.modified,
+        };
+        self.as_mut()
+            .rust_mut()
+            .pending_thumbnails
+            .insert(source_path.clone());
+
+        let folder_snapshot = current;
+        let qt_thread = self.qt_thread();
+
+        runtime().spawn(async move {
+            // Waits its turn rather than decoding immediately — see
+            // thumbnail_semaphore()'s comment for why this cap exists.
+            let _permit = thumbnail_semaphore().acquire().await;
+            let outcome = tokio::task::spawn_blocking(move || {
+                fm_core::thumbnails::get_or_generate(&request)
+            })
+            .await
+            .unwrap_or(fm_core::thumbnails::ThumbnailOutcome::Unavailable);
+            drop(_permit);
+
+            let _ = qt_thread.queue(move |mut model| {
+                model
+                    .as_mut()
+                    .rust_mut()
+                    .pending_thumbnails
+                    .remove(&source_path);
+
+                // Stale guard: the user may have navigated to a different
+                // folder while this ran in the background — discard the
+                // result rather than patch a row it no longer belongs to.
+                if model.current_path.to_string() != folder_snapshot.display().to_string() {
+                    return;
+                }
+                let Some(idx) = model.entries.iter().position(|e| e.path == source_path) else {
+                    return;
+                };
+                let fm_core::thumbnails::ThumbnailOutcome::Ready(thumb_path) = outcome else {
+                    return;
+                };
+                model.as_mut().rust_mut().entries[idx].thumbnail_path = Some(thumb_path);
+
+                // Model rows are the FILTERED view of `entries` (hidden
+                // files and search misses removed — see data()/row_count()),
+                // so `idx` must be mapped through matching_indices before it
+                // can name a row. Emitting dataChanged with the raw entries
+                // index pointed at the wrong row whenever any hidden file
+                // preceded this entry in sort order — the delegate that was
+                // actually waiting never heard its thumbnail was ready, so
+                // in any folder containing a dotfile, thumbnails silently
+                // never appeared. If the entry is itself filtered out right
+                // now, there's no row to notify; the stored thumbnail_path
+                // is still picked up by data() whenever it becomes visible.
+                let matching = matching_indices(
+                    &model.entries,
+                    &model.search_query.to_string(),
+                    model.show_hidden,
+                );
+                let Some(row) = matching.iter().position(|&i| i == idx) else {
+                    return;
+                };
+                let parent = cxx_qt_lib::QModelIndex::default();
+                let model_index = model.model_index(row as i32, 0, &parent);
+                model.as_mut().data_changed(
+                    &model_index,
+                    &model_index,
+                    &cxx_qt_lib::QList::<i32>::default(),
+                );
             });
         });
     }

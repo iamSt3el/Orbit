@@ -11,6 +11,10 @@ pub struct FileEntry {
     pub mime_type: String,
     pub icon_key: String,
     pub permissions: String,
+    /// Populated lazily by `thumbnails::get_or_generate` once a thumbnail
+    /// has actually been generated/found in the freedesktop cache — `None`
+    /// until then, whether that means "not requested yet" or "unavailable".
+    pub thumbnail_path: Option<PathBuf>,
 }
 
 /// Formats a Unix permission mode as a 9-character `rwxr-xr-x` style string

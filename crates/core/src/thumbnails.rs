@@ -1,0 +1,335 @@
+//! Thumbnail generation and caching, following the freedesktop.org
+//! "Thumbnail Managing Standard" so the on-disk cache is shared with
+//! Nautilus, Dolphin, and other spec-compliant file managers instead of
+//! duplicating work they've already done (or vice versa):
+//! <https://specifications.freedesktop.org/thumbnail/latest-single/>
+//!
+//! All functions here do synchronous, potentially slow I/O and image
+//! decoding — callers must invoke `get_or_generate` from a blocking-safe
+//! context (e.g. `tokio::task::spawn_blocking`), never on a UI thread.
+
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Files larger than this are skipped entirely — decoding a huge image just
+/// to shrink it to 128px is wasted work, and this keeps memory use bounded
+/// regardless of what a folder contains.
+const MAX_SOURCE_BYTES: u64 = 20 * 1024 * 1024;
+
+/// A second, pixel-count-based guard on top of the byte-size cutoff above —
+/// a small but highly-compressed file (e.g. a solid-color 10000x10000 PNG)
+/// can still decode to hundreds of megabytes of raw RGBA. 24MP comfortably
+/// covers typical phone/camera photos while capping a single decode's
+/// worst-case buffer at under ~100MB.
+const MAX_SOURCE_PIXELS: u64 = 24_000_000;
+
+/// Matches the freedesktop spec's "normal" size tier — the only tier this
+/// app needs, since even its largest icon size (the grid view's "large"
+/// icon-size-level container) stays well under 128px.
+const THUMBNAIL_SIZE: u32 = 128;
+
+/// Subdirectory name under `thumbnails/fail/` — the spec requires
+/// namespacing failure markers per-generator so one buggy thumbnailer
+/// doesn't poison another's retries.
+const APP_NAME: &str = "filemanager";
+
+/// RFC 3986 unreserved characters stay literal; everything else (including
+/// non-ASCII bytes) is percent-encoded — matching how GLib's
+/// `g_filename_to_uri()` builds the URI Nautilus hashes, which is what
+/// lets our cache entries land on the same filenames as theirs.
+const URI_UNSAFE: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~')
+    .remove(b'/');
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThumbnailOutcome {
+    Ready(PathBuf),
+    Unavailable,
+}
+
+pub struct ThumbnailRequest {
+    pub source_path: PathBuf,
+    pub mime_type: String,
+    pub size: u64,
+    pub modified: SystemTime,
+}
+
+/// Whether `mime_type` is one this module knows how to thumbnail. Kept
+/// public so callers (the QML-facing model) can skip even asking for a
+/// thumbnail — e.g. only wiring up the request for entries whose icon key
+/// is "image" in the first place.
+pub fn is_thumbnailable(mime_type: &str) -> bool {
+    matches!(
+        mime_type,
+        "image/png"
+            | "image/jpeg"
+            | "image/gif"
+            | "image/bmp"
+            | "image/x-icon"
+            | "image/vnd.microsoft.icon"
+            | "image/tiff"
+            | "image/webp"
+            | "image/svg+xml"
+    )
+}
+
+/// Looks up a cached thumbnail for `request`, generating and caching one if
+/// none exists yet (or the cached one is stale). Uses the real
+/// `$XDG_CACHE_HOME/thumbnails` directory — see `get_or_generate_in` for the
+/// same logic against an arbitrary cache root (used by tests).
+pub fn get_or_generate(request: &ThumbnailRequest) -> ThumbnailOutcome {
+    match cache_root() {
+        Some(root) => get_or_generate_in(request, &root),
+        None => ThumbnailOutcome::Unavailable,
+    }
+}
+
+pub fn get_or_generate_in(request: &ThumbnailRequest, cache_root: &Path) -> ThumbnailOutcome {
+    if !is_thumbnailable(&request.mime_type) || request.size > MAX_SOURCE_BYTES {
+        return ThumbnailOutcome::Unavailable;
+    }
+    let Some(uri) = file_uri(&request.source_path) else {
+        return ThumbnailOutcome::Unavailable;
+    };
+    let Ok(mtime) = request.modified.duration_since(UNIX_EPOCH) else {
+        return ThumbnailOutcome::Unavailable;
+    };
+    let mtime = mtime.as_secs();
+    let key = cache_key(&uri);
+
+    let normal_dir = cache_root.join("normal");
+    let cached = normal_dir.join(format!("{key}.png"));
+    if is_fresh(&cached, &uri, mtime) {
+        return ThumbnailOutcome::Ready(cached);
+    }
+
+    let fail_dir = cache_root.join("fail").join(APP_NAME);
+    let failed = fail_dir.join(format!("{key}.png"));
+    if is_fresh(&failed, &uri, mtime) {
+        return ThumbnailOutcome::Unavailable;
+    }
+
+    match render_thumbnail(&request.source_path, &request.mime_type) {
+        Some(rgba) => match write_atomic_png(&normal_dir, &key, &rgba, &uri, mtime) {
+            Some(path) => ThumbnailOutcome::Ready(path),
+            None => ThumbnailOutcome::Unavailable,
+        },
+        None => {
+            // 1x1 transparent marker — its presence (with a matching
+            // Thumb::MTime) is what "fresh" means for a failure, so a
+            // known-broken/unsupported file isn't re-decoded on every scan.
+            let marker = RenderedRgba {
+                width: 1,
+                height: 1,
+                pixels: vec![0, 0, 0, 0],
+            };
+            write_atomic_png(&fail_dir, &key, &marker, &uri, mtime);
+            ThumbnailOutcome::Unavailable
+        }
+    }
+}
+
+fn cache_root() -> Option<PathBuf> {
+    dirs::cache_dir().map(|dir| dir.join("thumbnails"))
+}
+
+/// The file:// URI the spec hashes to name the cache entry.
+fn file_uri(path: &Path) -> Option<String> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(path)
+    };
+    let lossy = absolute.to_string_lossy();
+    let encoded = percent_encoding::utf8_percent_encode(&lossy, URI_UNSAFE);
+    Some(format!("file://{encoded}"))
+}
+
+fn cache_key(uri: &str) -> String {
+    use md5::{Digest, Md5};
+    Md5::digest(uri.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A cached (or fail-marker) PNG is fresh when it exists and its embedded
+/// `Thumb::URI`/`Thumb::MTime` text chunks match the source file exactly —
+/// this is what lets a changed file (same name, newer mtime) invalidate a
+/// stale thumbnail instead of showing outdated content forever.
+fn is_fresh(png_path: &Path, expected_uri: &str, expected_mtime: u64) -> bool {
+    let Ok(file) = std::fs::File::open(png_path) else {
+        return false;
+    };
+    let Ok(reader) = png::Decoder::new(file).read_info() else {
+        return false;
+    };
+    let info = reader.info();
+    let mut uri = None;
+    let mut mtime = None;
+    for chunk in &info.uncompressed_latin1_text {
+        match chunk.keyword.as_str() {
+            "Thumb::URI" => uri = Some(chunk.text.clone()),
+            "Thumb::MTime" => mtime = chunk.text.parse::<u64>().ok(),
+            _ => {}
+        }
+    }
+    // GNOME's own thumbnailer (gnome-desktop-thumbnail, the library behind
+    // Nautilus) writes Thumb::URI as a compressed zTXt chunk rather than a
+    // plain tEXt one — without also checking here, every thumbnail Nautilus
+    // (or another zTXt-writing thumbnailer) had already generated looked
+    // "stale" to us and got fully redecoded for no reason, even though the
+    // cache key matched and a perfectly good thumbnail already existed.
+    if uri.is_none() || mtime.is_none() {
+        for chunk in &info.compressed_latin1_text {
+            let Ok(text) = chunk.get_text() else {
+                continue;
+            };
+            match chunk.keyword.as_str() {
+                "Thumb::URI" if uri.is_none() => uri = Some(text),
+                "Thumb::MTime" if mtime.is_none() => mtime = text.parse::<u64>().ok(),
+                _ => {}
+            }
+        }
+    }
+    if uri.is_none() || mtime.is_none() {
+        for chunk in &info.utf8_text {
+            let Ok(text) = chunk.get_text() else {
+                continue;
+            };
+            match chunk.keyword.as_str() {
+                "Thumb::URI" if uri.is_none() => uri = Some(text),
+                "Thumb::MTime" if mtime.is_none() => mtime = text.parse::<u64>().ok(),
+                _ => {}
+            }
+        }
+    }
+    uri.as_deref() == Some(expected_uri) && mtime == Some(expected_mtime)
+}
+
+struct RenderedRgba {
+    width: u32,
+    height: u32,
+    /// Straight (non-premultiplied) RGBA8, `width * height * 4` bytes.
+    pixels: Vec<u8>,
+}
+
+fn render_thumbnail(path: &Path, mime_type: &str) -> Option<RenderedRgba> {
+    if mime_type == "image/svg+xml" {
+        render_svg(path)
+    } else {
+        render_raster(path)
+    }
+}
+
+fn render_raster(path: &Path) -> Option<RenderedRgba> {
+    let (width, height) = image::image_dimensions(path).ok()?;
+    if (width as u64) * (height as u64) > MAX_SOURCE_PIXELS {
+        return None;
+    }
+    let image = image::ImageReader::open(path).ok()?.decode().ok()?;
+    let thumbnail = image.thumbnail(THUMBNAIL_SIZE, THUMBNAIL_SIZE).to_rgba8();
+    let (width, height) = thumbnail.dimensions();
+    Some(RenderedRgba {
+        width,
+        height,
+        pixels: thumbnail.into_raw(),
+    })
+}
+
+fn render_svg(path: &Path) -> Option<RenderedRgba> {
+    let data = std::fs::read(path).ok()?;
+    let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).ok()?;
+    let size = tree.size();
+    let (natural_width, natural_height) = (size.width(), size.height());
+    if natural_width <= 0.0 || natural_height <= 0.0 {
+        return None;
+    }
+    // Scale to fit within THUMBNAIL_SIZE on the larger axis, upscaling
+    // small icon-sized SVGs (many declare a 16x16 or 24x24 viewBox) up to
+    // thumbnail resolution rather than leaving them tiny.
+    let scale = (THUMBNAIL_SIZE as f32 / natural_width).min(THUMBNAIL_SIZE as f32 / natural_height);
+    let width = (natural_width * scale).round().max(1.0) as u32;
+    let height = (natural_height * scale).round().max(1.0) as u32;
+
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    Some(RenderedRgba {
+        width,
+        height,
+        pixels: unpremultiply(pixmap.data().to_vec()),
+    })
+}
+
+/// tiny-skia stores premultiplied alpha; PNG expects straight alpha —
+/// without this, semi-transparent edges (common on icon-style SVGs) come
+/// out with a visible dark fringe.
+fn unpremultiply(mut rgba: Vec<u8>) -> Vec<u8> {
+    for pixel in rgba.chunks_exact_mut(4) {
+        let alpha = pixel[3] as u32;
+        if alpha != 0 && alpha != 255 {
+            for channel in &mut pixel[0..3] {
+                *channel = ((*channel as u32 * 255) / alpha) as u8;
+            }
+        }
+    }
+    rgba
+}
+
+/// Writes `rgba` to `dir/key.png` (creating `dir` if needed) with the
+/// Thumb::URI/Thumb::MTime text chunks the spec requires, via a
+/// write-to-temp-then-rename so a concurrent reader never observes a
+/// partially-written file.
+fn write_atomic_png(
+    dir: &Path,
+    key: &str,
+    rgba: &RenderedRgba,
+    uri: &str,
+    mtime: u64,
+) -> Option<PathBuf> {
+    std::fs::create_dir_all(dir).ok()?;
+    let final_path = dir.join(format!("{key}.png"));
+    let tmp_path = dir.join(format!(".{key}.tmp-{}", std::process::id()));
+
+    let result = (|| -> std::io::Result<()> {
+        let file = std::fs::File::create(&tmp_path)?;
+        let mut encoder = png::Encoder::new(file, rgba.width, rgba.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .add_text_chunk("Thumb::URI".to_string(), uri.to_string())
+            .map_err(std::io::Error::other)?;
+        encoder
+            .add_text_chunk("Thumb::MTime".to_string(), mtime.to_string())
+            .map_err(std::io::Error::other)?;
+        let mut writer = encoder.write_header().map_err(std::io::Error::other)?;
+        writer
+            .write_image_data(&rgba.pixels)
+            .map_err(std::io::Error::other)?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+        return None;
+    }
+
+    // Thumbnails can reveal the content of files the user might not want
+    // world-readable (spec recommendation: mode 0600).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    std::fs::rename(&tmp_path, &final_path).ok()?;
+    Some(final_path)
+}

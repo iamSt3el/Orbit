@@ -13,6 +13,7 @@ fn file_entry_stores_all_fields() {
         mime_type: "text/plain".to_string(),
         icon_key: "text".to_string(),
         permissions: "rw-r--r--".to_string(),
+        thumbnail_path: None,
     };
 
     assert_eq!(entry.name, "foo.txt");

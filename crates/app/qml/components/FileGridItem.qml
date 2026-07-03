@@ -12,6 +12,7 @@ Item {
     required property string modified
     required property string mimeType
     required property string permissions
+    required property string thumbnailPath
 
     // Overridable from the view-options menu; defaults preserve the
     // original fixed sizing.
@@ -25,9 +26,20 @@ Item {
     width: GridView.view ? GridView.view.cellWidth : 0
     height: GridView.view ? GridView.view.cellHeight : 0
 
+    // See FileListItem.qml's matching comment — lazy per-delegate request,
+    // no-ops if already resolved or already in flight.
+    function _requestThumbnailIfNeeded() {
+        if (root.fileModel && root.iconKey === "image" && root.thumbnailPath.length === 0) {
+            root.fileModel.requestThumbnail(root.name)
+        }
+    }
+
+    Component.onCompleted: root._requestThumbnailIfNeeded()
+
     GridView.onReused: {
         cellArea.hoverEnabled = false
         cellArea.hoverEnabled = true
+        root._requestThumbnailIfNeeded()
     }
 
     Item {
@@ -73,6 +85,21 @@ Item {
                     content: Format.iconForKey(root.iconKey, root.isDir)
                     iconSize: root.iconSize
                     color: root.isDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
+                    visible: opacity > 0
+                    opacity: thumbnail.status === Image.Ready ? 0 : 1
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                }
+
+                Image {
+                    id: thumbnail
+                    anchors.fill: parent
+                    visible: opacity > 0
+                    opacity: status === Image.Ready ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                    source: root.thumbnailPath.length > 0 ? root.thumbnailPath : ""
+                    sourceSize: Qt.size(root.iconContainerSize, root.iconContainerSize)
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
                 }
             }
 
@@ -111,8 +138,16 @@ Item {
                 if (mouse.button === Qt.RightButton) {
                     var scenePos = root.mapToItem(null, mouse.x, mouse.y)
                     root.contextMenuRequested(scenePos.x, scenePos.y)
-                } else if (root.isDir) {
+                }
+            }
+            onDoubleClicked: (mouse) => {
+                if (mouse.button !== Qt.LeftButton) {
+                    return
+                }
+                if (root.isDir) {
                     root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
+                } else {
+                    root.fileModel.openEntry(root.name)
                 }
             }
         }

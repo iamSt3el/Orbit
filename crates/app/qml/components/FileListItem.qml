@@ -13,6 +13,7 @@ Item {
     required property string modified
     required property string mimeType
     required property string permissions
+    required property string thumbnailPath
 
     // Overridable from the view-options menu; defaults preserve the
     // original fixed sizing.
@@ -29,6 +30,20 @@ Item {
     width: ListView.view ? ListView.view.width : 0
     height: 60
 
+    // Only images (raster + svg, see fm_core::mime's icon_key_for) get a
+    // thumbnail — everything else keeps its Material icon glyph. Requested
+    // lazily per-delegate rather than for the whole folder up front, so a
+    // directory with thousands of photos doesn't decode all of them at
+    // once; FileListModel itself no-ops a repeat request for an entry
+    // that's already resolved or already in flight.
+    function _requestThumbnailIfNeeded() {
+        if (root.fileModel && root.iconKey === "image" && root.thumbnailPath.length === 0) {
+            root.fileModel.requestThumbnail(root.name)
+        }
+    }
+
+    Component.onCompleted: root._requestThumbnailIfNeeded()
+
     // Reset by the ListView on delegate reuse (Qt Quick recycles delegate
     // items on scroll when ListView.reuseItems is true — hover state is
     // otherwise left stale on the recycled item since repositioning it
@@ -36,6 +51,7 @@ Item {
     ListView.onReused: {
         rowArea.hoverEnabled = false
         rowArea.hoverEnabled = true
+        root._requestThumbnailIfNeeded()
     }
 
     // Lightweight hover highlight: a constant-color rectangle whose opacity
@@ -63,8 +79,16 @@ Item {
             if (mouse.button === Qt.RightButton) {
                 var scenePos = root.mapToItem(null, mouse.x, mouse.y)
                 root.contextMenuRequested(scenePos.x, scenePos.y)
-            } else if (root.isDir) {
+            }
+        }
+        onDoubleClicked: (mouse) => {
+            if (mouse.button !== Qt.LeftButton) {
+                return
+            }
+            if (root.isDir) {
                 root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
+            } else {
+                root.fileModel.openEntry(root.name)
             }
         }
     }
@@ -97,6 +121,21 @@ Item {
                 content: Format.iconForKey(root.iconKey, root.isDir)
                 iconSize: root.iconSize
                 color: root.isDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
+                visible: opacity > 0
+                opacity: thumbnail.status === Image.Ready ? 0 : 1
+                Behavior on opacity { NumberAnimation { duration: 120 } }
+            }
+
+            Image {
+                id: thumbnail
+                anchors.fill: parent
+                visible: opacity > 0
+                opacity: status === Image.Ready ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 120 } }
+                source: root.thumbnailPath.length > 0 ? root.thumbnailPath : ""
+                sourceSize: Qt.size(root.iconContainerSize, root.iconContainerSize)
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
             }
         }
 

@@ -47,6 +47,7 @@ pub fn list_directory(path: PathBuf) -> mpsc::Receiver<std::io::Result<FileEntry
                         mime_type: mime_info.mime_type,
                         icon_key: mime_info.icon_key,
                         permissions: format_permissions(metadata.permissions().mode()),
+                        thumbnail_path: None,
                     };
 
                     if tx.send(Ok(file_entry)).await.is_err() {
