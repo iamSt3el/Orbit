@@ -22,6 +22,17 @@ Rectangle {
         anchors.margins: 8
         spacing: 2
 
+        Text {
+            text: "Places"
+            leftPadding: 16
+            topPadding: 8
+            bottomPadding: 8
+            color: Color.scheme.surfaceVariantText
+            font.family: Type.labelLarge.family
+            font.weight: Type.labelLarge.weight
+            font.pixelSize: Type.labelLarge.size
+        }
+
         Repeater {
             model: root._shortcuts
 

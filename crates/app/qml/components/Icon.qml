@@ -7,6 +7,8 @@ Text {
     property real truncatedFill: Math.round(fill * 100) / 100
     property real weightAxis: 500
 
+    Behavior on fill { NumberAnimation { duration: 200 } }
+
     property string content: ""
     text: content
     antialiasing: true

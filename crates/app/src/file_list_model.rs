@@ -73,6 +73,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "deleteEntry"]
         fn delete_entry(self: Pin<&mut FileListModel>, name: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "openEntry"]
+        fn open_entry(self: Pin<&mut FileListModel>, name: &QString);
     }
 }
 
@@ -124,6 +128,17 @@ const NAME_ROLE: i32 = 0x0100;
 const IS_DIR_ROLE: i32 = 0x0101;
 const SIZE_ROLE: i32 = 0x0102;
 const ICON_KEY_ROLE: i32 = 0x0103;
+const MODIFIED_ROLE: i32 = 0x0104;
+const MIME_TYPE_ROLE: i32 = 0x0105;
+
+fn format_modified(modified: std::time::SystemTime) -> String {
+    use time::format_description::well_known::Iso8601;
+    use time::OffsetDateTime;
+
+    OffsetDateTime::from(modified)
+        .format(&Iso8601::DEFAULT)
+        .unwrap_or_default()
+}
 
 async fn gather_entries(path: &std::path::Path) -> Vec<fm_core::FileEntry> {
     let mut rx = fm_core::listing::list_directory(path.to_path_buf());
@@ -157,6 +172,8 @@ impl qobject::FileListModel {
             IS_DIR_ROLE => QVariant::from(&entry.is_dir),
             SIZE_ROLE => QVariant::from(&(entry.size as i64)),
             ICON_KEY_ROLE => QVariant::from(&QString::from(&entry.icon_key)),
+            MODIFIED_ROLE => QVariant::from(&QString::from(&format_modified(entry.modified))),
+            MIME_TYPE_ROLE => QVariant::from(&QString::from(&entry.mime_type)),
             _ => QVariant::default(),
         }
     }
@@ -167,6 +184,8 @@ impl qobject::FileListModel {
         roles.insert(IS_DIR_ROLE, QByteArray::from("isDir"));
         roles.insert(SIZE_ROLE, QByteArray::from("size"));
         roles.insert(ICON_KEY_ROLE, QByteArray::from("iconKey"));
+        roles.insert(MODIFIED_ROLE, QByteArray::from("modified"));
+        roles.insert(MIME_TYPE_ROLE, QByteArray::from("mimeType"));
         roles
     }
 
@@ -210,5 +229,13 @@ impl qobject::FileListModel {
         }
         let refresh_path = QString::from(&current.display().to_string());
         self.as_mut().navigate(&refresh_path);
+    }
+
+    fn open_entry(self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let target = current.join(name.to_string());
+        if let Err(e) = runtime().block_on(fm_core::ops::open_file(&target)) {
+            eprintln!("open_entry failed: {e}");
+        }
     }
 }

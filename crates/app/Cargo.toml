@@ -9,6 +9,7 @@ cxx = "1"
 cxx-qt = "0.9"
 cxx-qt-lib = { version = "0.9", features = ["qt_gui", "qt_qml"] }
 tokio = { version = "1", features = ["full"] }
+time = { version = "0.3", features = ["formatting"] }
 
 [build-dependencies]
 cxx-qt-build = "0.9"

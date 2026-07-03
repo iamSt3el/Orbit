@@ -8,6 +8,10 @@ Item {
     required property bool isDir
     required property int size
     required property string iconKey
+    required property string modified
+    required property string mimeType
+
+    signal contextMenuRequested(real x, real y)
 
     readonly property var fileModel: GridView.view ? GridView.view.model : null
 
@@ -77,8 +81,12 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                if (root.isDir) {
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: (mouse) => {
+                if (mouse.button === Qt.RightButton) {
+                    var scenePos = root.mapToItem(null, mouse.x, mouse.y)
+                    root.contextMenuRequested(scenePos.x, scenePos.y)
+                } else if (root.isDir) {
                     root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
                 }
             }

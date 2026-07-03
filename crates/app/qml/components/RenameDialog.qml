@@ -1,0 +1,111 @@
+import QtQuick
+import com.filemanager.app 1.0
+
+// A minimal custom modal dialog for renaming an entry, mirroring
+// NewFolderDialog.qml's structure.
+Item {
+    id: root
+
+    signal accepted(string oldName, string newName)
+
+    anchors.fill: parent
+    visible: false
+    z: 2000
+
+    property string _oldName: ""
+
+    function open(name) {
+        root._oldName = name
+        nameInput.text = name
+        visible = true
+        nameInput.forceActiveFocus()
+        nameInput.selectAll()
+    }
+
+    function close() {
+        visible = false
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: Color.scheme.inverseSurface
+        opacity: 0.4
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.close()
+        }
+    }
+
+    Rectangle {
+        id: dialog
+        width: 320
+        height: 140
+        radius: Shape.extraLarge
+        color: Elevation.surfaceAt(3)
+        anchors.centerIn: parent
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 16
+
+            Text {
+                text: "Rename"
+                color: Color.scheme.surfaceText
+                font.family: Type.titleMedium.family
+                font.weight: Type.titleMedium.weight
+                font.pixelSize: Type.titleMedium.size
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 44
+                radius: Shape.small
+                color: Color.scheme.surfaceContainerHighest
+                border.width: nameInput.activeFocus ? 2 : 1
+                border.color: nameInput.activeFocus ? Color.scheme.primary : Color.scheme.outline
+
+                Behavior on border.width { NumberAnimation { duration: Motion.standard.duration } }
+
+                TextInput {
+                    id: nameInput
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: Color.scheme.surfaceText
+                    font.family: Type.bodyLarge.family
+                    font.pixelSize: Type.bodyLarge.size
+                    clip: true
+
+                    Keys.onReturnPressed: confirmButton.clicked()
+                    Keys.onEscapePressed: root.close()
+                }
+            }
+
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+
+                Button {
+                    variant: "text"
+                    text: "Cancel"
+                    onClicked: root.close()
+                }
+
+                Button {
+                    id: confirmButton
+                    variant: "filled"
+                    text: "Rename"
+                    onClicked: {
+                        if (nameInput.text.length > 0 && nameInput.text !== root._oldName) {
+                            root.accepted(root._oldName, nameInput.text)
+                        }
+                        root.close()
+                    }
+                }
+            }
+        }
+    }
+}

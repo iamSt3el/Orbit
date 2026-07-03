@@ -1,0 +1,112 @@
+import QtQuick
+import com.filemanager.app 1.0
+
+// M3 Connected Button Group (segmented button).
+//
+// Each segment is an independent filled button. Outer corners of the whole
+// group stay fully rounded (pill); inner corners tighten to a small radius
+// where segments meet, except the active segment, which stays fully
+// rounded on all corners. A small gap separates segments so the background
+// shows through. Adapted from the quickshell project's ButtonGroup.qml.
+//
+// model:       array of { value, label?, icon? }
+// activeCheck: function(value) => bool
+// signal segmentClicked(value)
+Item {
+    id: root
+
+    property var model: []
+    property var activeCheck: function (value) { return false }
+    signal segmentClicked(var value)
+
+    property color activeColor: Color.scheme.primary
+    property color activeTextColor: Color.scheme.primaryText
+    property color inactiveColor: Color.scheme.surfaceContainerHighest
+    property color inactiveTextColor: Color.scheme.surfaceText
+
+    property bool fillWidth: false
+    property int iconSize: 16
+    property int textSize: 14
+
+    readonly property real fullRadius: height / 2
+    readonly property real innerRadius: 4
+    readonly property real gap: 2
+
+    height: 40
+    implicitWidth: fillWidth ? root.width : _row.implicitWidth
+
+    Row {
+        id: _row
+        height: parent.height
+        width: root.fillWidth ? root.width : implicitWidth
+        spacing: root.gap
+
+        Repeater {
+            model: root.model
+
+            delegate: Item {
+                id: seg
+                required property var modelData
+                required property int index
+
+                readonly property bool active: root.activeCheck(modelData.value)
+                readonly property bool isFirst: index === 0
+                readonly property bool isLast: index === root.model.length - 1
+                readonly property bool hasIcon: !!modelData.icon
+                readonly property bool hasLabel: !!modelData.label
+
+                height: root.height
+                implicitWidth: _content.implicitWidth + 24
+                width: root.fillWidth
+                    ? (root.width - (root.model.length - 1) * root.gap) / Math.max(root.model.length, 1)
+                    : implicitWidth
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: seg.active ? root.activeColor : root.inactiveColor
+                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                    topLeftRadius:     (seg.isFirst || seg.active) ? root.fullRadius : root.innerRadius
+                    bottomLeftRadius:  (seg.isFirst || seg.active) ? root.fullRadius : root.innerRadius
+                    topRightRadius:    (seg.isLast  || seg.active) ? root.fullRadius : root.innerRadius
+                    bottomRightRadius: (seg.isLast  || seg.active) ? root.fullRadius : root.innerRadius
+
+                    Row {
+                        id: _content
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Icon {
+                            visible: seg.hasIcon
+                            anchors.verticalCenter: parent.verticalCenter
+                            content: seg.modelData.icon ?? ""
+                            iconSize: root.iconSize
+                            fill: seg.active ? 1 : 0
+                            color: seg.active ? root.activeTextColor : root.inactiveTextColor
+                        }
+
+                        Text {
+                            visible: seg.hasLabel
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: seg.modelData.label ?? ""
+                            font.family: Type.labelLarge.family
+                            font.pixelSize: root.textSize
+                            color: seg.active ? root.activeTextColor : root.inactiveTextColor
+                        }
+                    }
+
+                    Ripple {
+                        anchors.fill: parent
+                        topLeftRadius:     (seg.isFirst || seg.active) ? root.fullRadius : root.innerRadius
+                        bottomLeftRadius:  (seg.isFirst || seg.active) ? root.fullRadius : root.innerRadius
+                        topRightRadius:    (seg.isLast  || seg.active) ? root.fullRadius : root.innerRadius
+                        bottomRightRadius: (seg.isLast  || seg.active) ? root.fullRadius : root.innerRadius
+                        hoverColor:  Qt.alpha(seg.active ? root.activeTextColor : Color.scheme.primary, 0.08)
+                        rippleColor: Qt.alpha(seg.active ? root.activeTextColor : Color.scheme.primary, 0.25)
+                        onClicked: root.segmentClicked(seg.modelData.value)
+                    }
+                }
+            }
+        }
+    }
+}

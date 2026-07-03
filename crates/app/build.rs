@@ -20,16 +20,23 @@ fn main() {
                 "qml/shapes/shapes/rounded-corner.js",
                 "qml/shapes/shapes/rounded-polygon.js",
                 "qml/shapes/shapes/utils.js",
+                "qml/shapes/ShapeCanvas.qml",
                 "qml/components/Ripple.qml",
                 "qml/components/Icon.qml",
                 "qml/components/Button.qml",
+                "qml/components/ButtonGroup.qml",
+                "qml/components/ShapeLoader.qml",
+                "qml/components/WavyProgressBar.qml",
                 "qml/components/FileListItem.qml",
                 "qml/components/FileGridItem.qml",
                 "qml/components/TopAppBar.qml",
                 "qml/components/ScrollBar.qml",
                 "qml/components/Sidebar.qml",
                 "qml/components/ContextMenu.qml",
+                "qml/components/ItemContextMenu.qml",
                 "qml/components/NewFolderDialog.qml",
+                "qml/components/RenameDialog.qml",
+                "qml/components/PropertiesDialog.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))

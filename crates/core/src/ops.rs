@@ -9,6 +9,16 @@ pub async fn create_folder(parent: &Path, name: &str) -> io::Result<PathBuf> {
     Ok(target)
 }
 
+/// Opens a file with the desktop's default handler for its type. Fires the
+/// launcher and returns immediately — does not wait for the opened
+/// application to exit.
+pub async fn open_file(path: &Path) -> io::Result<()> {
+    tokio::process::Command::new("xdg-open")
+        .arg(path)
+        .spawn()?;
+    Ok(())
+}
+
 pub async fn rename(path: &Path, new_name: &str) -> io::Result<PathBuf> {
     let parent = path
         .parent()

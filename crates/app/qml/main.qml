@@ -87,7 +87,12 @@ Window {
                             reuseItems: true
                             cacheBuffer: 400
                             acceptedButtons: Qt.NoButton
-                            delegate: FileListItem {}
+                            delegate: FileListItem {
+                                onContextMenuRequested: (x, y) => {
+                                    var pos = contentArea.mapFromItem(null, x, y)
+                                    itemContextMenu.popup(pos.x, pos.y, name, isDir, size, modified, mimeType)
+                                }
+                            }
 
                             MouseArea {
                                 anchors.fill: parent
@@ -121,7 +126,12 @@ Window {
                             reuseItems: true
                             cacheBuffer: 400
                             acceptedButtons: Qt.NoButton
-                            delegate: FileGridItem {}
+                            delegate: FileGridItem {
+                                onContextMenuRequested: (x, y) => {
+                                    var pos = contentArea.mapFromItem(null, x, y)
+                                    itemContextMenu.popup(pos.x, pos.y, name, isDir, size, modified, mimeType)
+                                }
+                            }
 
                             MouseArea {
                                 anchors.fill: parent
@@ -154,6 +164,30 @@ Window {
                 NewFolderDialog {
                     id: newFolderDialog
                     onAccepted: (name) => fileModel.createFolder(name)
+                }
+
+                ItemContextMenu {
+                    id: itemContextMenu
+                    onOpenRequested: (name) => {
+                        if (itemContextMenu.entryIsDir) {
+                            fileModel.navigate(fileModel.currentPath + "/" + name)
+                        } else {
+                            fileModel.openEntry(name)
+                        }
+                    }
+                    onRenameRequested: (name) => renameDialog.open(name)
+                    onDeleteRequested: (name) => fileModel.deleteEntry(name)
+                    onPropertiesRequested: (name, isDir, size, modified, mimeType) =>
+                        propertiesDialog.open(name, isDir, size, modified, mimeType)
+                }
+
+                RenameDialog {
+                    id: renameDialog
+                    onAccepted: (oldName, newName) => fileModel.renameEntry(oldName, newName)
+                }
+
+                PropertiesDialog {
+                    id: propertiesDialog
                 }
             }
         }

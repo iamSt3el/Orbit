@@ -55,9 +55,22 @@ Rectangle {
         }
     }
 
-    Text {
+    // A small, always-alive shape-morph mark — a bit of M3 Expressive
+    // personality that doesn't depend on there being a real async
+    // operation to represent (navigate/create/delete are currently
+    // synchronous, so a loading indicator tied to them wouldn't get a
+    // chance to render any frames during the block anyway).
+    ShapeLoader {
+        id: brandMark
+        size: 22
         anchors.left: backButton.visible ? backButton.right : parent.left
-        anchors.leftMargin: backButton.visible ? 8 : 20
+        anchors.leftMargin: backButton.visible ? 12 : 24
+        anchors.verticalCenter: parent.verticalCenter
+    }
+
+    Text {
+        anchors.left: brandMark.right
+        anchors.leftMargin: 12
         anchors.right: viewToggle.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
@@ -69,66 +82,20 @@ Rectangle {
         elide: Text.ElideMiddle
     }
 
-    // Segmented list/grid view toggle.
-    Row {
+    ButtonGroup {
         id: viewToggle
         anchors.right: parent.right
-        anchors.rightMargin: 12
+        anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 2
-
-        Item {
-            width: 40
-            height: 40
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Shape.full
-                color: Color.scheme.secondaryContainer
-                opacity: root.viewMode === "list" ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-            }
-
-            Icon {
-                anchors.centerIn: parent
-                content: "view_list"
-                iconSize: 20
-                color: root.viewMode === "list" ? Color.scheme.secondaryContainerText : Color.scheme.surfaceVariantText
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.listViewRequested()
-            }
-        }
-
-        Item {
-            width: 40
-            height: 40
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Shape.full
-                color: Color.scheme.secondaryContainer
-                opacity: root.viewMode === "grid" ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-            }
-
-            Icon {
-                anchors.centerIn: parent
-                content: "grid_view"
-                iconSize: 20
-                color: root.viewMode === "grid" ? Color.scheme.secondaryContainerText : Color.scheme.surfaceVariantText
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.gridViewRequested()
-            }
+        iconSize: 18
+        model: [
+            { value: "list", icon: "view_list" },
+            { value: "grid", icon: "grid_view" }
+        ]
+        activeCheck: (value) => value === root.viewMode
+        onSegmentClicked: (value) => {
+            if (value === "list") root.listViewRequested()
+            else root.gridViewRequested()
         }
     }
 }
