@@ -34,3 +34,36 @@ async fn rename_fails_for_nonexistent_path() {
 
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn copy_duplicates_a_single_file() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("source.txt");
+    fs::write(&src, b"payload").unwrap();
+    let dst = dir.path().join("dest.txt");
+
+    ops::copy(&src, &dst).await.unwrap();
+
+    assert!(src.exists());
+    assert_eq!(fs::read_to_string(&dst).unwrap(), "payload");
+}
+
+#[tokio::test]
+async fn copy_duplicates_a_directory_tree() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("srcdir");
+    fs::create_dir(&src).unwrap();
+    fs::write(src.join("top.txt"), b"top").unwrap();
+    fs::create_dir(src.join("nested")).unwrap();
+    fs::write(src.join("nested").join("inner.txt"), b"inner").unwrap();
+    let dst = dir.path().join("dstdir");
+
+    ops::copy(&src, &dst).await.unwrap();
+
+    assert_eq!(fs::read_to_string(dst.join("top.txt")).unwrap(), "top");
+    assert_eq!(
+        fs::read_to_string(dst.join("nested").join("inner.txt")).unwrap(),
+        "inner"
+    );
+    assert!(src.exists(), "copy must not remove the source");
+}
