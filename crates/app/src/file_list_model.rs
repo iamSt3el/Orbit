@@ -23,6 +23,10 @@ pub mod qobject {
         #[qml_element]
         #[base = QAbstractListModel]
         #[qproperty(QString, current_path, cxx_name = "currentPath")]
+        #[qproperty(QString, home_path, cxx_name = "homePath")]
+        #[qproperty(QString, downloads_path, cxx_name = "downloadsPath")]
+        #[qproperty(QString, documents_path, cxx_name = "documentsPath")]
+        #[qproperty(QString, trash_path, cxx_name = "trashPath")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -93,6 +97,14 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 pub struct FileListModelRust {
     entries: Vec<fm_core::FileEntry>,
     current_path: QString,
+    home_path: QString,
+    downloads_path: QString,
+    documents_path: QString,
+    trash_path: QString,
+}
+
+fn path_or_empty(path: Option<PathBuf>) -> QString {
+    QString::from(&path.map(|p| p.display().to_string()).unwrap_or_default())
 }
 
 impl Default for FileListModelRust {
@@ -100,6 +112,10 @@ impl Default for FileListModelRust {
         Self {
             entries: Vec::new(),
             current_path: QString::from(""),
+            home_path: path_or_empty(fm_core::paths::home_dir()),
+            downloads_path: path_or_empty(fm_core::paths::download_dir()),
+            documents_path: path_or_empty(fm_core::paths::document_dir()),
+            trash_path: path_or_empty(fm_core::paths::trash_dir()),
         }
     }
 }

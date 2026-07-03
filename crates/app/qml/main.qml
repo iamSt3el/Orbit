@@ -4,7 +4,7 @@ import com.filemanager.app 1.0
 
 Window {
     id: window
-    width: 900
+    width: 1000
     height: 650
     visible: true
     title: "File Manager"
@@ -52,79 +52,24 @@ Window {
             onGridViewRequested: window.viewMode = "grid"
         }
 
-        Item {
+        Row {
             width: parent.width
             height: parent.height - 72
 
-            Column {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 12
+            Sidebar {
+                height: parent.height
+                fileModel: fileModel
+                currentPath: fileModel.currentPath ? fileModel.currentPath : ""
+            }
+
+            Item {
+                id: contentArea
+                width: parent.width - 220
+                height: parent.height
 
                 Rectangle {
-                    id: newFolderRow
-                    width: parent.width
-                    height: 56
-                    radius: Shape.large
-                    color: Color.scheme.surfaceContainerHigh
-
-                    Row {
-                        anchors.fill: parent
-                        anchors.leftMargin: 16
-                        anchors.rightMargin: 8
-                        spacing: 12
-
-                        Rectangle {
-                            width: 220
-                            height: 40
-                            radius: Shape.small
-                            color: Color.scheme.surfaceContainerHighest
-                            border.width: newFolderName.activeFocus ? 2 : 1
-                            border.color: newFolderName.activeFocus ? Color.scheme.primary : Color.scheme.outline
-                            anchors.verticalCenter: parent.verticalCenter
-
-                            Behavior on border.width { NumberAnimation { duration: Motion.standard.duration } }
-
-                            TextInput {
-                                id: newFolderName
-                                anchors.fill: parent
-                                anchors.leftMargin: 12
-                                anchors.rightMargin: 12
-                                verticalAlignment: TextInput.AlignVCenter
-                                color: Color.scheme.surfaceText
-                                font.family: Type.bodyLarge.family
-                                font.pixelSize: Type.bodyLarge.size
-                                clip: true
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: newFolderName.text.length === 0
-                                    text: "New folder name"
-                                    color: Color.scheme.surfaceVariantText
-                                    font.family: Type.bodyLarge.family
-                                    font.pixelSize: Type.bodyLarge.size
-                                }
-                            }
-                        }
-
-                        Button {
-                            variant: "tonal"
-                            text: "Create"
-                            icon: "create_new_folder"
-                            anchors.verticalCenter: parent.verticalCenter
-                            onClicked: {
-                                if (newFolderName.text.length > 0) {
-                                    fileModel.createFolder(newFolderName.text)
-                                    newFolderName.text = ""
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: parent.height - newFolderRow.height - parent.spacing
+                    anchors.fill: parent
+                    anchors.margins: 16
                     radius: Shape.large
                     color: Color.scheme.surfaceContainerLow
                     clip: true
@@ -134,6 +79,9 @@ Window {
 
                         ListView {
                             id: listView
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            anchors.rightMargin: 14
                             model: fileModel
                             spacing: 2
                             reuseItems: true
@@ -143,8 +91,17 @@ Window {
 
                             MouseArea {
                                 anchors.fill: parent
-                                acceptedButtons: Qt.NoButton
+                                acceptedButtons: Qt.RightButton
                                 onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
+                                onClicked: (mouse) => contextMenu.popup(mouse.x + 20, mouse.y + 20)
+                            }
+
+                            ScrollBar {
+                                anchors.top: parent.top
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.rightMargin: -12
+                                flickable: listView
                             }
                         }
                     }
@@ -154,9 +111,12 @@ Window {
 
                         GridView {
                             id: gridView
-                            model: fileModel
-                            cellWidth: 110
-                            cellHeight: 110
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            anchors.rightMargin: 14
+                            readonly property int minCellWidth: 110
+                            cellWidth: width / Math.max(1, Math.floor(width / minCellWidth))
+                            cellHeight: 120
                             reuseItems: true
                             cacheBuffer: 400
                             acceptedButtons: Qt.NoButton
@@ -164,17 +124,35 @@ Window {
 
                             MouseArea {
                                 anchors.fill: parent
-                                acceptedButtons: Qt.NoButton
+                                acceptedButtons: Qt.RightButton
                                 onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
+                                onClicked: (mouse) => contextMenu.popup(mouse.x + 20, mouse.y + 20)
+                            }
+
+                            ScrollBar {
+                                anchors.top: parent.top
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.rightMargin: -12
+                                flickable: gridView
                             }
                         }
                     }
 
                     Loader {
                         anchors.fill: parent
-                        anchors.margins: 4
                         sourceComponent: window.viewMode === "grid" ? gridComponent : listComponent
                     }
+                }
+
+                ContextMenu {
+                    id: contextMenu
+                    onNewFolderRequested: newFolderDialog.open()
+                }
+
+                NewFolderDialog {
+                    id: newFolderDialog
+                    onAccepted: (name) => fileModel.createFolder(name)
                 }
             }
         }

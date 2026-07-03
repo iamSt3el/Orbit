@@ -26,9 +26,19 @@ Item {
         anchors.fill: parent
         anchors.margins: 6
         radius: Shape.medium
-        color: cellArea.containsMouse ? Elevation.surfaceAt(1) : "transparent"
+        color: Color.scheme.surface
 
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Rectangle {
+            // Constant-color, opacity-only hover fill (see FileListItem.qml
+            // for why: animating `color` itself from "transparent" to an
+            // opaque tint cross-interpolates alpha and RGB, which flashes
+            // through an intermediate near-black state before settling).
+            anchors.fill: parent
+            radius: parent.radius
+            color: Elevation.surfaceAt(1)
+            opacity: cellArea.containsMouse ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        }
 
         Column {
             anchors.centerIn: parent

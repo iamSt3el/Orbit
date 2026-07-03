@@ -26,6 +26,10 @@ fn main() {
                 "qml/components/FileListItem.qml",
                 "qml/components/FileGridItem.qml",
                 "qml/components/TopAppBar.qml",
+                "qml/components/ScrollBar.qml",
+                "qml/components/Sidebar.qml",
+                "qml/components/ContextMenu.qml",
+                "qml/components/NewFolderDialog.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))
