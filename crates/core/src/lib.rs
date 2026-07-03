@@ -3,5 +3,6 @@ pub mod listing;
 pub mod mime;
 pub mod ops;
 pub mod trash;
+pub mod watcher;
 
 pub use entry::FileEntry;
