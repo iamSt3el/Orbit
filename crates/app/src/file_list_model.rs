@@ -146,6 +146,10 @@ pub mod qobject {
         fn single_selected_name(self: &FileListModel) -> QString;
 
         #[qinvokable]
+        #[cxx_name = "selectedNamesJoined"]
+        fn selected_names_joined(self: &FileListModel) -> QString;
+
+        #[qinvokable]
         #[cxx_name = "openSelectedEntry"]
         fn open_selected_entry(self: Pin<&mut FileListModel>);
     }
@@ -250,6 +254,15 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "pasteEntry"]
         fn paste_entry(self: Pin<&mut FileListModel>);
+
+        /// Copies or moves an explicit list of absolute source paths into
+        /// destDir — the drag-and-drop counterpart to pasteEntry, sharing
+        /// its batch transfer machinery. `paths` is newline-joined (QML
+        /// builds this from drop.urls, stripping each file:// prefix
+        /// itself before joining, since this file never parses URIs).
+        #[qinvokable]
+        #[cxx_name = "dropPaths"]
+        fn drop_paths(self: Pin<&mut FileListModel>, paths: &QString, dest_dir: &QString, is_move: bool);
 
         /// Kicks off background thumbnail generation/lookup for one entry —
         /// called from FileListItem/FileGridItem when a delegate holding an
@@ -682,6 +695,11 @@ impl qobject::FileListModel {
         }
     }
 
+    fn selected_names_joined(&self) -> QString {
+        let names: Vec<&str> = self.selected.iter().map(|s| s.as_str()).collect();
+        QString::from(&names.join("\n"))
+    }
+
     fn open_selected_entry(mut self: core::pin::Pin<&mut Self>) {
         if self.selected.len() != 1 {
             return;
@@ -1111,14 +1129,47 @@ impl qobject::FileListModel {
         let is_cut = self.clipboard_is_cut;
         let dest_dir = PathBuf::from(self.current_path.to_string());
 
+        // A cut clears the whole clipboard after pasting once; a copy can
+        // be pasted repeatedly — same rule as before, now applied via the
+        // shared transfer_batch helper (see also dropPaths, which shares
+        // this same batch copy/move-with-progress machinery).
+        if is_cut {
+            self.as_mut().rust_mut().clipboard_paths = Vec::new();
+        }
+
+        self.as_mut().transfer_batch(sources, dest_dir, is_cut, "paste");
+    }
+
+    fn drop_paths(mut self: core::pin::Pin<&mut Self>, paths: &QString, dest_dir: &QString, is_move: bool) {
+        let sources: Vec<PathBuf> = paths.to_string().lines().map(PathBuf::from).collect();
+        if sources.is_empty() {
+            return;
+        }
+        let dest = PathBuf::from(dest_dir.to_string());
+        let verb = if is_move { "move" } else { "copy" };
+        self.as_mut().transfer_batch(sources, dest, is_move, verb);
+    }
+
+    /// Shared copy/move-with-progress batch machinery for both pasteEntry
+    /// (sources from clipboard_paths) and dropPaths (sources from a
+    /// drag-and-drop). `verb` only affects the dev-facing eprintln! label
+    /// and the user-facing batch error message (e.g. "paste" keeps
+    /// pasteEntry's existing wording; dropPaths passes "move" or "copy").
+    fn transfer_batch(
+        mut self: core::pin::Pin<&mut Self>,
+        sources: Vec<PathBuf>,
+        dest_dir: PathBuf,
+        is_move: bool,
+        verb: &'static str,
+    ) {
         // Computed synchronously, up front — one combined denominator for
         // the whole batch (cheap relative to the actual copy), so the
         // "done / total" display starts with a real number even for a
-        // multi-item paste.
+        // multi-item transfer.
         let total: u64 = sources.iter().map(|src| fm_core::ops::path_size(src)).sum();
 
         self.as_mut().set_is_busy(true);
-        self.as_mut().set_busy_label(QString::from(if is_cut {
+        self.as_mut().set_busy_label(QString::from(if is_move {
             "Moving…"
         } else {
             "Copying…"
@@ -1126,13 +1177,6 @@ impl qobject::FileListModel {
         self.as_mut().set_transfer_done_bytes(0);
         self.as_mut().set_transfer_total_bytes(total as i64);
         self.as_mut().set_transfer_speed_label(QString::from(""));
-
-        // A cut clears the whole clipboard after pasting once; a copy can
-        // be pasted repeatedly — same rule as the single-item version this
-        // replaces, just applied to the whole batch.
-        if is_cut {
-            self.as_mut().rust_mut().clipboard_paths = Vec::new();
-        }
 
         // Shared across every item in the batch and never reset between
         // them — copy_with_progress/move_entry_with_progress only ever
@@ -1173,7 +1217,7 @@ impl qobject::FileListModel {
                     continue;
                 };
                 let dest = unique_paste_destination(&dest_dir, std::path::Path::new(&file_name));
-                let result = if is_cut {
+                let result = if is_move {
                     fm_core::ops::move_entry_with_progress(
                         &src,
                         &dest,
@@ -1191,7 +1235,7 @@ impl qobject::FileListModel {
                     .await
                 };
                 if let Err(e) = result {
-                    eprintln!("paste_entry failed for {}: {e}", src.display());
+                    eprintln!("{verb} failed for {}: {e}", src.display());
                     failed += 1;
                 }
             }
@@ -1203,7 +1247,7 @@ impl qobject::FileListModel {
                 model.as_mut().refresh_entries_diff();
                 if failed > 0 {
                     model.as_mut().error_occurred(QString::from(&format!(
-                        "Couldn't paste {}",
+                        "Couldn't {verb} {}",
                         pluralize_items(failed)
                     )));
                 }
