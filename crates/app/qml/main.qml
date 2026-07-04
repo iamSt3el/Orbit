@@ -234,6 +234,12 @@ Window {
                                 reuseItems: true
                                 cacheBuffer: 400
                                 acceptedButtons: Qt.NoButton
+                                // Last plain- or Ctrl-clicked name, for
+                                // Shift+click range math — transient UI
+                                // state, not part of "what's selected"
+                                // (that lives in fileModel), so it's kept
+                                // here rather than in Rust.
+                                property string selectionAnchor: ""
                                 delegate: FileListItem {
                                     iconSize: window.activeIconProfile.listIcon
                                     iconContainerSize: window.activeIconProfile.listContainer
@@ -277,6 +283,7 @@ Window {
                                 anchors.margins: 4
                                 anchors.rightMargin: 14
                                 model: fileModel
+                                property string selectionAnchor: ""
                                 readonly property int minCellWidth: window.activeIconProfile.gridMinWidth
                                 readonly property int columns: Math.max(1, Math.floor(width / minCellWidth))
                                 // Not Math.floor()'d — GridView's cellWidth accepts a

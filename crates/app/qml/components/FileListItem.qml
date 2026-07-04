@@ -17,6 +17,9 @@ Item {
     required property string mimeType
     required property string permissions
     required property string thumbnailPath
+    // Bound to the model's `selected` role — true while this row is part
+    // of the current multi-selection (Ctrl/Shift/drag-select).
+    required property bool selected
 
     // Overridable from the view-options menu; defaults preserve the
     // original fixed sizing.
@@ -64,6 +67,17 @@ Item {
     // settling — animating opacity on a fixed color avoids that entirely,
     // and is cheaper (no OpacityMask/layer compositing per row, which is
     // expensive to redo on every delegate during fast scrolling).
+    // Persistent tint while selected — distinct from the transient
+    // opacity-animated hover highlight below, which continues to layer on
+    // top of it on hover.
+    Rectangle {
+        anchors.fill: parent
+        radius: Shape.small
+        color: Color.scheme.secondaryContainer
+        opacity: root.selected ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+    }
+
     Rectangle {
         anchors.fill: parent
         radius: Shape.small
@@ -80,8 +94,29 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: (mouse) => {
             if (mouse.button === Qt.RightButton) {
+                // Right-clicking an item already part of the selection
+                // keeps the whole selection (so the menu can act on all of
+                // it); right-clicking outside it replaces the selection
+                // with just this entry, matching every reference file
+                // manager.
+                if (!root.selected) {
+                    root.fileModel.clearSelection()
+                    root.fileModel.setSelected(root.name, true)
+                    root.ListView.view.selectionAnchor = root.name
+                }
                 var scenePos = root.mapToItem(null, mouse.x, mouse.y)
                 root.contextMenuRequested(scenePos.x, scenePos.y)
+                return
+            }
+            if (mouse.modifiers & Qt.ShiftModifier) {
+                root.fileModel.selectRange(root.ListView.view.selectionAnchor, root.name)
+            } else if (mouse.modifiers & Qt.ControlModifier) {
+                root.fileModel.setSelected(root.name, !root.selected)
+                root.ListView.view.selectionAnchor = root.name
+            } else {
+                root.fileModel.clearSelection()
+                root.fileModel.setSelected(root.name, true)
+                root.ListView.view.selectionAnchor = root.name
             }
         }
         onDoubleClicked: (mouse) => {

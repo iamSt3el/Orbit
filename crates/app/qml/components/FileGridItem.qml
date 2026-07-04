@@ -16,6 +16,8 @@ Item {
     required property string mimeType
     required property string permissions
     required property string thumbnailPath
+    // See FileListItem.qml's matching property.
+    required property bool selected
 
     // Overridable from the view-options menu; defaults preserve the
     // original fixed sizing.
@@ -49,6 +51,14 @@ Item {
         id: card
         anchors.fill: parent
         anchors.margins: 6
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Shape.medium
+            color: Color.scheme.secondaryContainer
+            opacity: root.selected ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        }
 
         Rectangle {
             // No permanent fill here — a fully opaque `surface`-colored box
@@ -139,8 +149,24 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: (mouse) => {
                 if (mouse.button === Qt.RightButton) {
+                    if (!root.selected) {
+                        root.fileModel.clearSelection()
+                        root.fileModel.setSelected(root.name, true)
+                        root.GridView.view.selectionAnchor = root.name
+                    }
                     var scenePos = root.mapToItem(null, mouse.x, mouse.y)
                     root.contextMenuRequested(scenePos.x, scenePos.y)
+                    return
+                }
+                if (mouse.modifiers & Qt.ShiftModifier) {
+                    root.fileModel.selectRange(root.GridView.view.selectionAnchor, root.name)
+                } else if (mouse.modifiers & Qt.ControlModifier) {
+                    root.fileModel.setSelected(root.name, !root.selected)
+                    root.GridView.view.selectionAnchor = root.name
+                } else {
+                    root.fileModel.clearSelection()
+                    root.fileModel.setSelected(root.name, true)
+                    root.GridView.view.selectionAnchor = root.name
                 }
             }
             onDoubleClicked: (mouse) => {
