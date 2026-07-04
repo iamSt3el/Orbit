@@ -40,12 +40,15 @@ Item {
         root.entryMimeType = mimeType
         root.entryPermissions = permissions
         visible = true
+        root.forceActiveFocus()
     }
 
     function close() {
         visible = false
         root.closed()
     }
+
+    Keys.onEscapePressed: root.close()
 
     readonly property bool _isImage: !root.entryIsDir && root.entryMimeType.indexOf("image/") === 0
 

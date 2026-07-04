@@ -22,12 +22,15 @@ Item {
     function open(msg) {
         root.message = msg
         visible = true
+        root.forceActiveFocus()
     }
 
     function close() {
         visible = false
         root.closed()
     }
+
+    Keys.onEscapePressed: root.close()
 
     Rectangle {
         anchors.fill: parent

@@ -24,12 +24,15 @@ Item {
             root.resumeLastPath = root.fileModel.resumeLastPath
         }
         visible = true
+        root.forceActiveFocus()
     }
 
     function close() {
         visible = false
         root.closed()
     }
+
+    Keys.onEscapePressed: root.close()
 
     Rectangle {
         anchors.fill: parent

@@ -47,12 +47,15 @@ Item {
         menu.x = Math.min(x, root.width - menu.width)
         menu.y = Math.min(y, root.height - menu.height)
         visible = true
+        root.forceActiveFocus()
     }
 
     function close() {
         visible = false
         root.closed()
     }
+
+    Keys.onEscapePressed: root.close()
 
     MouseArea {
         // See ItemContextMenu.qml — must accept every button and track
