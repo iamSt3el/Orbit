@@ -253,6 +253,23 @@ Window {
     }
 
     Shortcut {
+        sequences: [StandardKey.Undo]
+        onActivated: {
+            if (window.anyPopupOpen) return
+            fileModel.undo()
+        }
+    }
+
+    // StandardKey.Redo covers both Ctrl+Shift+Z and Ctrl+Y per platform.
+    Shortcut {
+        sequences: [StandardKey.Redo]
+        onActivated: {
+            if (window.anyPopupOpen) return
+            fileModel.redo()
+        }
+    }
+
+    Shortcut {
         sequences: ["Return", "Enter"]
         onActivated: {
             if (window.anyPopupOpen) return
@@ -937,9 +954,13 @@ Window {
     Connections {
         target: fileModel
         function onErrorOccurred(message) { snackbar.show(message) }
+        function onOperationCompleted(description, canUndo) {
+            snackbar.show(description, canUndo ? "Undo" : "")
+        }
     }
 
     Snackbar {
         id: snackbar
+        onActionClicked: fileModel.undo()
     }
 }
