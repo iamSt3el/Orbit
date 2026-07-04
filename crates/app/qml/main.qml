@@ -293,6 +293,13 @@ Window {
                                     property real pressX: 0
                                     property real pressY: 0
                                     property bool dragging: false
+                                    // Names this drag gesture itself has selected so far —
+                                    // distinct from the selection as a whole, so that an
+                                    // item swept into the rect and then swept back out
+                                    // gets deselected again, without touching any
+                                    // pre-existing (e.g. Ctrl-drag-additive) selection the
+                                    // rectangle never covered.
+                                    property var sweptNames: ({})
 
                                     onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
 
@@ -303,6 +310,7 @@ Window {
                                         listBackgroundArea.pressX = mouse.x
                                         listBackgroundArea.pressY = mouse.y
                                         listBackgroundArea.dragging = false
+                                        listBackgroundArea.sweptNames = ({})
                                         if (!(mouse.modifiers & Qt.ControlModifier)) {
                                             fileModel.clearSelection()
                                         }
@@ -354,8 +362,12 @@ Window {
                                             // get selected, only ones entirely inside it.
                                             var contained = child.x >= rectLeft && (child.x + child.width) <= rectRight &&
                                                             child.y >= rectTop && (child.y + child.height) <= rectBottom
-                                            if (contained) {
+                                            if (contained && !listBackgroundArea.sweptNames[child.name]) {
+                                                listBackgroundArea.sweptNames[child.name] = true
                                                 fileModel.setSelected(child.name, true)
+                                            } else if (!contained && listBackgroundArea.sweptNames[child.name]) {
+                                                delete listBackgroundArea.sweptNames[child.name]
+                                                fileModel.setSelected(child.name, false)
                                             }
                                         }
                                     }
@@ -444,6 +456,8 @@ Window {
                                     property real pressX: 0
                                     property real pressY: 0
                                     property bool dragging: false
+                                    // See the matching comment in listBackgroundArea.
+                                    property var sweptNames: ({})
 
                                     onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
 
@@ -454,6 +468,7 @@ Window {
                                         gridBackgroundArea.pressX = mouse.x
                                         gridBackgroundArea.pressY = mouse.y
                                         gridBackgroundArea.dragging = false
+                                        gridBackgroundArea.sweptNames = ({})
                                         if (!(mouse.modifiers & Qt.ControlModifier)) {
                                             fileModel.clearSelection()
                                         }
@@ -492,8 +507,12 @@ Window {
                                             // get selected, only ones entirely inside it.
                                             var contained = child.x >= rectLeft && (child.x + child.width) <= rectRight &&
                                                             child.y >= rectTop && (child.y + child.height) <= rectBottom
-                                            if (contained) {
+                                            if (contained && !gridBackgroundArea.sweptNames[child.name]) {
+                                                gridBackgroundArea.sweptNames[child.name] = true
                                                 fileModel.setSelected(child.name, true)
+                                            } else if (!contained && gridBackgroundArea.sweptNames[child.name]) {
+                                                delete gridBackgroundArea.sweptNames[child.name]
+                                                fileModel.setSelected(child.name, false)
                                             }
                                         }
                                     }
