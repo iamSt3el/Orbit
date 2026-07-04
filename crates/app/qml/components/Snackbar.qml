@@ -10,10 +10,8 @@ import com.filemanager.app 1.0
 Item {
     id: root
 
-    property string message: ""
-
     function show(text) {
-        root.message = text
+        _label.text = text
         _bubble.visible = true
         _dismissTimer.restart()
     }
@@ -42,7 +40,7 @@ Item {
             id: _label
             anchors.centerIn: parent
             width: parent.width - 32
-            text: root.message
+            text: ""
             wrapMode: Text.Wrap
             horizontalAlignment: Text.AlignHCenter
             color: Color.scheme.inverseOnSurface
