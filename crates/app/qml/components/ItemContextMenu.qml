@@ -18,6 +18,11 @@ Item {
     // if more than 1, the menu shows only the actions that make sense in
     // bulk (Cut/Copy/Duplicate/Delete) instead of the full single-item menu.
     property int selectionCount: 1
+    // True while browsing the Trash folder — swaps the whole menu for a
+    // Restore/Delete Permanently pair instead of the generic file menu,
+    // none of which (Rename/Cut/Copy/Duplicate/Properties) make sense for
+    // an already-trashed item.
+    property bool isTrashView: false
 
     signal openRequested(string name)
     signal renameRequested(string name)
@@ -26,6 +31,8 @@ Item {
     signal copyRequested(string name)
     signal cutRequested(string name)
     signal deleteRequested(string name)
+    signal restoreRequested(string name)
+    signal deletePermanentlyRequested(string name)
     signal propertiesRequested(string name, bool isDir, real size, string modified, string mimeType, string permissions)
     // See ContextMenu.qml — lets the Loader wrapping this component tear
     // the instance down once it hides.
@@ -35,7 +42,17 @@ Item {
     visible: false
     z: 1000
 
-    readonly property var _items: root.selectionCount > 1
+    readonly property var _items: root.isTrashView
+        ? (root.selectionCount > 1
+            ? [
+                { icon: "restore_from_trash", label: "Restore " + root.selectionCount + " items", action: "restore" },
+                { icon: "delete_forever", label: "Delete " + root.selectionCount + " items Permanently", action: "deletePermanently", destructive: true }
+            ]
+            : [
+                { icon: "restore_from_trash", label: "Restore", action: "restore" },
+                { icon: "delete_forever", label: "Delete Permanently", action: "deletePermanently", destructive: true }
+            ])
+        : root.selectionCount > 1
         ? [
             { icon: "content_cut", label: "Cut " + root.selectionCount + " items", action: "cut" },
             { icon: "content_copy", label: "Copy " + root.selectionCount + " items", action: "copy" },
@@ -53,7 +70,7 @@ Item {
             { icon: "info", label: "Properties", action: "properties" }
         ]
 
-    function popup(x, y, name, isDir, size, modified, mimeType, permissions, selectionCount) {
+    function popup(x, y, name, isDir, size, modified, mimeType, permissions, selectionCount, isTrashView) {
         root.entryName = name
         root.entryIsDir = isDir
         root.entrySize = size
@@ -61,6 +78,7 @@ Item {
         root.entryMimeType = mimeType
         root.entryPermissions = permissions
         root.selectionCount = selectionCount
+        root.isTrashView = isTrashView
         menu.x = Math.min(x, root.width - menu.width)
         menu.y = Math.min(y, root.height - menu.height)
         visible = true
@@ -174,6 +192,8 @@ Item {
                             case "duplicate": root.duplicateRequested(root.entryName); break
                             case "copyPath": root.copyPathRequested(root.entryName); break
                             case "delete": root.deleteRequested(root.entryName); break
+                            case "restore": root.restoreRequested(root.entryName); break
+                            case "deletePermanently": root.deletePermanentlyRequested(root.entryName); break
                             case "properties":
                                 root.propertiesRequested(root.entryName, root.entryIsDir, root.entrySize, root.entryModified, root.entryMimeType, root.entryPermissions)
                                 break
