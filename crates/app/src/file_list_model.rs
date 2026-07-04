@@ -430,6 +430,8 @@ pub struct FileListModelRust {
     /// delegate re-requests it (e.g. scrolling it out and back into view)
     /// before the first request has finished.
     pending_thumbnails: std::collections::HashSet<PathBuf>,
+    /// Session-only undo/redo history of this app's own file operations.
+    journal: UndoJournal,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -480,6 +482,7 @@ impl Default for FileListModelRust {
             clipboard_is_cut: false,
             selected: std::collections::HashSet::new(),
             pending_thumbnails: std::collections::HashSet::new(),
+            journal: UndoJournal::default(),
         }
     }
 }
@@ -1562,6 +1565,92 @@ fn pluralize_items(count: usize) -> String {
     }
 }
 
+/// One undoable operation, recorded after it succeeded, holding the paths
+/// that actually resulted (post-uniquification). Every pair Vec is
+/// (before, after) in the operation's own forward direction.
+#[derive(Clone, Debug, PartialEq)]
+enum UndoOp {
+    /// (original path, new path) — cut-paste, internal drag-move, external
+    /// drop with isMove. Undo moves each `new` back to `orig`.
+    Move { pairs: Vec<(PathBuf, PathBuf)> },
+    /// Undo renames `to` back to `from`.
+    Rename { from: PathBuf, to: PathBuf },
+    /// (original path, trashed files/ path). Undo restores from Trash. The
+    /// trashed half is only meaningful while this sits on the undo stack —
+    /// redo re-trashes the originals and rebuilds fresh trashed paths.
+    TrashDelete { pairs: Vec<(PathBuf, PathBuf)> },
+    /// (source path, created path) — copy-paste, external drop-copy,
+    /// duplicate. Undo moves the created files to Trash (never permanent).
+    CopyIn { pairs: Vec<(PathBuf, PathBuf)> },
+    /// Undo moves the created folder to Trash.
+    CreateFolder { path: PathBuf },
+    /// (trashed files/ path, restored path). Undo re-trashes the restored
+    /// files — producing *new* trashed paths, which replace the stale
+    /// first halves in the record pushed onto the redo stack.
+    Restore { pairs: Vec<(PathBuf, PathBuf)> },
+}
+
+impl UndoOp {
+    /// Short user-facing summary shown in the operationCompleted snackbar
+    /// ("Moved 3 items"), and after undo/redo prefixed as "Undid: …".
+    fn describe(&self) -> String {
+        fn leaf(path: &std::path::Path) -> &str {
+            path.file_name().and_then(|n| n.to_str()).unwrap_or("?")
+        }
+        match self {
+            UndoOp::Move { pairs } => format!("Moved {}", pluralize_items(pairs.len())),
+            UndoOp::Rename { to, .. } => format!("Renamed to \"{}\"", leaf(to)),
+            UndoOp::TrashDelete { pairs } => {
+                format!("Moved {} to Trash", pluralize_items(pairs.len()))
+            }
+            UndoOp::CopyIn { pairs } => format!("Copied {}", pluralize_items(pairs.len())),
+            UndoOp::CreateFolder { path } => format!("Created folder \"{}\"", leaf(path)),
+            UndoOp::Restore { pairs } => format!("Restored {}", pluralize_items(pairs.len())),
+        }
+    }
+}
+
+const UNDO_CAP: usize = 100;
+
+/// Session-only undo/redo history. record() is for freshly performed
+/// operations (clears redo — the standard branch-discarding rule);
+/// push_undo/push_redo move an op between stacks after a redo/undo
+/// completed, without touching the other stack.
+#[derive(Default)]
+struct UndoJournal {
+    undo_stack: Vec<UndoOp>,
+    redo_stack: Vec<UndoOp>,
+}
+
+impl UndoJournal {
+    fn record(&mut self, op: UndoOp) {
+        self.redo_stack.clear();
+        self.push_undo(op);
+    }
+
+    fn push_undo(&mut self, op: UndoOp) {
+        self.undo_stack.push(op);
+        if self.undo_stack.len() > UNDO_CAP {
+            self.undo_stack.remove(0);
+        }
+    }
+
+    fn push_redo(&mut self, op: UndoOp) {
+        self.redo_stack.push(op);
+        if self.redo_stack.len() > UNDO_CAP {
+            self.redo_stack.remove(0);
+        }
+    }
+
+    fn pop_undo(&mut self) -> Option<UndoOp> {
+        self.undo_stack.pop()
+    }
+
+    fn pop_redo(&mut self) -> Option<UndoOp> {
+        self.redo_stack.pop()
+    }
+}
+
 #[cfg(test)]
 mod selection_range_tests {
     use super::*;
@@ -1632,5 +1721,102 @@ mod pluralize_items_tests {
     #[test]
     fn pluralizes_zero_as_plural() {
         assert_eq!(pluralize_items(0), "0 items");
+    }
+}
+
+#[cfg(test)]
+mod undo_journal_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn move_op() -> UndoOp {
+        UndoOp::Move {
+            pairs: vec![(PathBuf::from("/a/x"), PathBuf::from("/b/x"))],
+        }
+    }
+
+    #[test]
+    fn record_pushes_onto_the_undo_stack() {
+        let mut journal = UndoJournal::default();
+        journal.record(move_op());
+        assert_eq!(journal.pop_undo(), Some(move_op()));
+        assert_eq!(journal.pop_undo(), None);
+    }
+
+    #[test]
+    fn record_clears_the_redo_stack() {
+        let mut journal = UndoJournal::default();
+        journal.push_redo(move_op());
+        journal.record(move_op());
+        assert_eq!(journal.pop_redo(), None);
+    }
+
+    #[test]
+    fn push_undo_does_not_clear_the_redo_stack() {
+        let mut journal = UndoJournal::default();
+        journal.push_redo(move_op());
+        journal.push_undo(move_op());
+        assert_eq!(journal.pop_redo(), Some(move_op()));
+    }
+
+    #[test]
+    fn undo_stack_caps_at_100_dropping_the_oldest() {
+        let mut journal = UndoJournal::default();
+        journal.record(UndoOp::CreateFolder {
+            path: PathBuf::from("/oldest"),
+        });
+        for _ in 0..100 {
+            journal.record(move_op());
+        }
+        // 101 records, cap 100: the CreateFolder fell off the bottom.
+        let mut popped = 0;
+        while let Some(op) = journal.pop_undo() {
+            assert_eq!(op, move_op());
+            popped += 1;
+        }
+        assert_eq!(popped, 100);
+    }
+
+    #[test]
+    fn describes_each_operation_kind() {
+        let pair = (PathBuf::from("/a/x.txt"), PathBuf::from("/b/x.txt"));
+        let two = vec![pair.clone(), pair.clone()];
+        assert_eq!(
+            UndoOp::Move { pairs: two.clone() }.describe(),
+            "Moved 2 items"
+        );
+        assert_eq!(
+            UndoOp::Rename {
+                from: PathBuf::from("/a/old.txt"),
+                to: PathBuf::from("/a/new.txt"),
+            }
+            .describe(),
+            "Renamed to \"new.txt\""
+        );
+        assert_eq!(
+            UndoOp::TrashDelete {
+                pairs: vec![pair.clone()],
+            }
+            .describe(),
+            "Moved 1 item to Trash"
+        );
+        assert_eq!(
+            UndoOp::CopyIn { pairs: two.clone() }.describe(),
+            "Copied 2 items"
+        );
+        assert_eq!(
+            UndoOp::CreateFolder {
+                path: PathBuf::from("/a/New Folder"),
+            }
+            .describe(),
+            "Created folder \"New Folder\""
+        );
+        assert_eq!(
+            UndoOp::Restore {
+                pairs: vec![pair],
+            }
+            .describe(),
+            "Restored 1 item"
+        );
     }
 }
