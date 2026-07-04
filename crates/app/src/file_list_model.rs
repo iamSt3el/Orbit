@@ -429,6 +429,11 @@ pub struct FileListModelRust {
     /// Kept alive only for its Drop impl (stops the OS-level watch when
     /// the model is destroyed) — never read otherwise.
     theme_colors_watcher: Option<fm_core::watcher::DirWatcher>,
+    /// Live watch on the current directory (see start_dir_watch). Replaced
+    /// on every navigate(); kept for its Drop impl like the field above —
+    /// dropping it also closes its event channel, which ends the drain
+    /// task watching that directory.
+    dir_watcher: Option<fm_core::watcher::DirWatcher>,
     view_mode: QString,
     icon_size_level: QString,
     saved_last_path: QString,
@@ -503,6 +508,7 @@ impl Default for FileListModelRust {
             theme_colors_path: path_or_empty(fm_core::paths::theme_colors_path()),
             theme_colors_text: QString::from(""),
             theme_colors_watcher: None,
+            dir_watcher: None,
             view_mode: QString::from(&settings.view_mode),
             icon_size_level: QString::from(&settings.icon_size_level),
             saved_last_path: QString::from(&settings.last_path),
@@ -796,6 +802,7 @@ impl qobject::FileListModel {
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
         self.save_settings();
+        self.as_mut().start_dir_watch();
 
         let generation = {
             let mut state = self.as_mut().rust_mut();
@@ -817,6 +824,67 @@ impl qobject::FileListModel {
                 model.as_mut().rust_mut().rebuild_displayed();
                 model.as_mut().end_reset_model();
             });
+        });
+    }
+
+    /// (Re)starts the live watch on the directory just navigated to.
+    /// External creates/deletes/renames/modifications are debounced —
+    /// flush after 250ms of quiet, but no later than 1s after a burst
+    /// began, so a continuous writer can't starve refreshes — into
+    /// refresh_entries_diff() calls, which already list in the background
+    /// under the listing_generation stale-guard. Assigning the new watcher
+    /// drops the previous one: its OS watch stops and its channel closes,
+    /// which ends the previous drain task. Setup failure is non-fatal —
+    /// the directory just doesn't live-update, exactly as before this
+    /// feature existed.
+    fn start_dir_watch(mut self: core::pin::Pin<&mut Self>) {
+        let dir = PathBuf::from(self.current_path.to_string());
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let watcher = match fm_core::watcher::DirWatcher::new(&dir, tx) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("start_dir_watch failed for {}: {e}", dir.display());
+                self.as_mut().rust_mut().dir_watcher = None;
+                return;
+            }
+        };
+        self.as_mut().rust_mut().dir_watcher = Some(watcher);
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            loop {
+                // First event of a burst; None means the watcher was
+                // dropped (a navigate() replaced it) — exit.
+                if rx.recv().await.is_none() {
+                    return;
+                }
+                // Coalesce the rest of the burst per the debounce rule.
+                let deadline =
+                    tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+                loop {
+                    let remaining =
+                        deadline.saturating_duration_since(tokio::time::Instant::now());
+                    let wait = std::time::Duration::from_millis(250).min(remaining);
+                    if wait.is_zero() {
+                        break; // 1s cap hit mid-burst: flush now
+                    }
+                    match tokio::time::timeout(wait, rx.recv()).await {
+                        Err(_) => break,         // quiet period reached
+                        Ok(Some(_)) => continue, // still bursting
+                        Ok(None) => break,       // dropped mid-burst: flush once, exit next loop
+                    }
+                }
+                let watched = dir.clone();
+                let _ = qt_thread.queue(move |mut model| {
+                    // A late burst from a directory the user already left
+                    // is dropped here, before refresh_entries_diff's own
+                    // generation guard even comes into play.
+                    if PathBuf::from(model.current_path.to_string()) == watched {
+                        model.as_mut().refresh_entries_diff();
+                    }
+                });
+            }
         });
     }
 
@@ -1004,10 +1072,16 @@ impl qobject::FileListModel {
         });
     }
 
-    fn apply_entries_diff(mut self: core::pin::Pin<&mut Self>, new_entries: Vec<fm_core::FileEntry>) {
+    fn apply_entries_diff(mut self: core::pin::Pin<&mut Self>, mut new_entries: Vec<fm_core::FileEntry>) {
         fn same_entry(a: &fm_core::FileEntry, b: &fm_core::FileEntry) -> bool {
             a.name == b.name && a.is_dir == b.is_dir
         }
+
+        // A fresh listing knows nothing about already-resolved thumbnails —
+        // both update paths below would otherwise drop them all on every
+        // refresh, which live watching turns from a rare annoyance into
+        // visible flicker on each external change.
+        carry_over_thumbnails(&self.entries, &mut new_entries);
 
         // A selected name that no longer exists in the fresh listing (it
         // was deleted, renamed, or moved elsewhere) can't stay selected.
@@ -1079,6 +1153,34 @@ impl qobject::FileListModel {
                 self.as_mut().rust_mut().rebuild_displayed();
                 self.as_mut().end_insert_rows();
             }
+        }
+
+        // Phase 3: rows present in both listings — same_entry matches on
+        // name+is_dir only, so an externally growing file (a download in
+        // progress) never updated its size/modified columns before this.
+        // Contents-only mutation: names, order, and count are untouched,
+        // so `displayed` stays valid and only dataChanged is emitted.
+        // carry_over_thumbnails above already re-attached still-valid
+        // thumbnails to new_entries; an entry whose mtime changed keeps
+        // thumbnail_path: None so its delegate re-requests a fresh one.
+        for (idx, new_entry) in new_entries.iter().enumerate() {
+            let Some(old_entry) = self.entries.get(idx) else {
+                continue;
+            };
+            if !entry_metadata_changed(old_entry, new_entry) {
+                continue;
+            }
+            let Some(row) = self.displayed.iter().position(|&i| i == idx) else {
+                self.as_mut().rust_mut().entries[idx] = new_entry.clone();
+                continue;
+            };
+            self.as_mut().rust_mut().entries[idx] = new_entry.clone();
+            let model_index = self.model_index(row as i32, 0, &parent);
+            self.as_mut().data_changed(
+                &model_index,
+                &model_index,
+                &cxx_qt_lib::QList::<i32>::default(),
+            );
         }
     }
 
