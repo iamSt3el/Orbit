@@ -14,6 +14,10 @@ Item {
     property string entryModified: ""
     property string entryMimeType: ""
     property string entryPermissions: ""
+    // How many items are selected at the moment this menu was popped up —
+    // if more than 1, the menu shows only the actions that make sense in
+    // bulk (Cut/Copy/Duplicate/Delete) instead of the full single-item menu.
+    property int selectionCount: 1
 
     signal openRequested(string name)
     signal renameRequested(string name)
@@ -31,24 +35,32 @@ Item {
     visible: false
     z: 1000
 
-    readonly property var _items: [
-        { icon: "open_in_new", label: "Open" },
-        { icon: "content_cut", label: "Cut" },
-        { icon: "content_copy", label: "Copy" },
-        { icon: "edit", label: "Rename" },
-        { icon: "file_copy", label: "Duplicate" },
-        { icon: "link", label: "Copy Path" },
-        { icon: "delete", label: "Delete", destructive: true },
-        { icon: "info", label: "Properties" }
-    ]
+    readonly property var _items: root.selectionCount > 1
+        ? [
+            { icon: "content_cut", label: "Cut " + root.selectionCount + " items", action: "cut" },
+            { icon: "content_copy", label: "Copy " + root.selectionCount + " items", action: "copy" },
+            { icon: "file_copy", label: "Duplicate " + root.selectionCount + " items", action: "duplicate" },
+            { icon: "delete", label: "Delete " + root.selectionCount + " items", action: "delete", destructive: true }
+        ]
+        : [
+            { icon: "open_in_new", label: "Open", action: "open" },
+            { icon: "content_cut", label: "Cut", action: "cut" },
+            { icon: "content_copy", label: "Copy", action: "copy" },
+            { icon: "edit", label: "Rename", action: "rename" },
+            { icon: "file_copy", label: "Duplicate", action: "duplicate" },
+            { icon: "link", label: "Copy Path", action: "copyPath" },
+            { icon: "delete", label: "Delete", action: "delete", destructive: true },
+            { icon: "info", label: "Properties", action: "properties" }
+        ]
 
-    function popup(x, y, name, isDir, size, modified, mimeType, permissions) {
+    function popup(x, y, name, isDir, size, modified, mimeType, permissions, selectionCount) {
         root.entryName = name
         root.entryIsDir = isDir
         root.entrySize = size
         root.entryModified = modified
         root.entryMimeType = mimeType
         root.entryPermissions = permissions
+        root.selectionCount = selectionCount
         menu.x = Math.min(x, root.width - menu.width)
         menu.y = Math.min(y, root.height - menu.height)
         visible = true
@@ -151,15 +163,15 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             root.close()
-                            switch (menuItem.modelData.label) {
-                            case "Open": root.openRequested(root.entryName); break
-                            case "Cut": root.cutRequested(root.entryName); break
-                            case "Copy": root.copyRequested(root.entryName); break
-                            case "Rename": root.renameRequested(root.entryName); break
-                            case "Duplicate": root.duplicateRequested(root.entryName); break
-                            case "Copy Path": root.copyPathRequested(root.entryName); break
-                            case "Delete": root.deleteRequested(root.entryName); break
-                            case "Properties":
+                            switch (menuItem.modelData.action) {
+                            case "open": root.openRequested(root.entryName); break
+                            case "cut": root.cutRequested(root.entryName); break
+                            case "copy": root.copyRequested(root.entryName); break
+                            case "rename": root.renameRequested(root.entryName); break
+                            case "duplicate": root.duplicateRequested(root.entryName); break
+                            case "copyPath": root.copyPathRequested(root.entryName); break
+                            case "delete": root.deleteRequested(root.entryName); break
+                            case "properties":
                                 root.propertiesRequested(root.entryName, root.entryIsDir, root.entrySize, root.entryModified, root.entryMimeType, root.entryPermissions)
                                 break
                             }

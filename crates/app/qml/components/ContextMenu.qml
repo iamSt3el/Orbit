@@ -12,6 +12,7 @@ Item {
     signal newFolderRequested
     signal openTerminalRequested
     signal pasteRequested
+    signal selectAllRequested
     // Emitted whenever this menu hides, whether from an outside click, an
     // action selection, or Escape — the Loader wrapping this component in
     // main.qml uses this to tear the instance down again.
@@ -31,10 +32,12 @@ Item {
         ? [
             { icon: "create_new_folder", label: "New folder" },
             { icon: "content_paste", label: "Paste" },
+            { icon: "select_all", label: "Select All" },
             { icon: "terminal", label: "Open Terminal Here" }
         ]
         : [
             { icon: "create_new_folder", label: "New folder" },
+            { icon: "select_all", label: "Select All" },
             { icon: "terminal", label: "Open Terminal Here" }
         ]
 
@@ -126,6 +129,7 @@ Item {
                             switch (menuItem.modelData.label) {
                             case "New folder": root.newFolderRequested(); break
                             case "Paste": root.pasteRequested(); break
+                            case "Select All": root.selectAllRequested(); break
                             case "Open Terminal Here": root.openTerminalRequested(); break
                             }
                         }

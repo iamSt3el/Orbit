@@ -12,6 +12,7 @@ Window {
     color: Color.scheme.surface
 
     property string _pendingDeleteName: ""
+    property bool _pendingDeleteIsSelection: false
 
     // A same-named alias, not just "fileModel" — `fileModel` itself is an
     // id, not a property of Window, so `window.fileModel` doesn't exist
@@ -99,7 +100,7 @@ Window {
 
     function openItemContextMenu(x, y, name, isDir, size, modified, mimeType, permissions) {
         itemContextMenuLoader.active = true
-        itemContextMenuLoader.item.popup(x, y, name, isDir, size, modified, mimeType, permissions)
+        itemContextMenuLoader.item.popup(x, y, name, isDir, size, modified, mimeType, permissions, fileModel.selectedCount())
     }
 
     function openRenameDialog(name) {
@@ -114,8 +115,15 @@ Window {
 
     function openDeleteConfirmDialog(name) {
         window._pendingDeleteName = name
+        window._pendingDeleteIsSelection = false
         deleteConfirmDialogLoader.active = true
         deleteConfirmDialogLoader.item.open("Move \"" + name + "\" to Trash?")
+    }
+
+    function openDeleteSelectionConfirmDialog(count) {
+        window._pendingDeleteIsSelection = true
+        deleteConfirmDialogLoader.active = true
+        deleteConfirmDialogLoader.item.open("Move " + count + " items to Trash?")
     }
 
     function openTrashContextMenu(x, y) {
@@ -143,6 +151,18 @@ Window {
             clipboardHelper.selectAll()
             clipboardHelper.copy()
         }
+    }
+
+    // Ctrl+A selects everything in the current folder. A window-level
+    // Shortcut, not a Keys handler on the view — the view doesn't hold
+    // keyboard focus today, and a Shortcut doesn't need it to. If a
+    // TextInput has focus (rename dialog, search field) and the user
+    // presses Ctrl+A meaning "select all text in this field," that
+    // TextInput's own built-in handling takes the key first — Shortcut
+    // only fires when nothing more specific already consumed it.
+    Shortcut {
+        sequence: StandardKey.SelectAll
+        onActivated: fileModel.selectAll()
     }
 
     // Layout modeled on the user's quickshell "Nebula" settings app: a
@@ -525,6 +545,7 @@ Window {
             onNewFolderRequested: window.openNewFolderDialog()
             onOpenTerminalRequested: fileModel.openTerminalHere()
             onPasteRequested: fileModel.pasteEntry()
+            onSelectAllRequested: fileModel.selectAll()
             onClosed: Qt.callLater(() => contextMenuLoader.active = false)
         }
     }
@@ -567,11 +588,35 @@ Window {
                 }
             }
             onRenameRequested: (name) => window.openRenameDialog(name)
-            onDuplicateRequested: (name) => fileModel.duplicateEntry(name)
+            onDuplicateRequested: (name) => {
+                if (itemContextMenu.selectionCount > 1) {
+                    fileModel.duplicateSelection()
+                } else {
+                    fileModel.duplicateEntry(name)
+                }
+            }
             onCopyPathRequested: (name) => clipboardHelper.copyText(fileModel.entryAbsolutePath(name))
-            onCopyRequested: (name) => fileModel.copyEntry(name)
-            onCutRequested: (name) => fileModel.cutEntry(name)
-            onDeleteRequested: (name) => window.openDeleteConfirmDialog(name)
+            onCopyRequested: (name) => {
+                if (itemContextMenu.selectionCount > 1) {
+                    fileModel.copySelection()
+                } else {
+                    fileModel.copyEntry(name)
+                }
+            }
+            onCutRequested: (name) => {
+                if (itemContextMenu.selectionCount > 1) {
+                    fileModel.cutSelection()
+                } else {
+                    fileModel.cutEntry(name)
+                }
+            }
+            onDeleteRequested: (name) => {
+                if (itemContextMenu.selectionCount > 1) {
+                    window.openDeleteSelectionConfirmDialog(itemContextMenu.selectionCount)
+                } else {
+                    window.openDeleteConfirmDialog(name)
+                }
+            }
             onPropertiesRequested: (name, isDir, size, modified, mimeType, permissions) =>
                 window.openPropertiesDialog(name, isDir, size, modified, mimeType, permissions)
             onClosed: Qt.callLater(() => itemContextMenuLoader.active = false)
@@ -605,7 +650,13 @@ Window {
         sourceComponent: ConfirmDialog {
             title: "Move to Trash"
             confirmLabel: "Delete"
-            onConfirmed: fileModel.deleteEntry(window._pendingDeleteName)
+            onConfirmed: {
+                if (window._pendingDeleteIsSelection) {
+                    fileModel.deleteSelection()
+                } else {
+                    fileModel.deleteEntry(window._pendingDeleteName)
+                }
+            }
             onClosed: Qt.callLater(() => deleteConfirmDialogLoader.active = false)
         }
     }
