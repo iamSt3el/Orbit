@@ -702,6 +702,8 @@ impl qobject::FileListModel {
             runtime().block_on(fm_core::ops::create_folder(&current, &name.to_string()))
         {
             eprintln!("create_folder failed: {e}");
+            self.as_mut()
+                .error_occurred(QString::from(&format!("Couldn't create folder: {e}")));
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -711,6 +713,10 @@ impl qobject::FileListModel {
         let target = current.join(old_name.to_string());
         if let Err(e) = runtime().block_on(fm_core::ops::rename(&target, &new_name.to_string())) {
             eprintln!("rename failed: {e}");
+            self.as_mut().error_occurred(QString::from(&format!(
+                "Couldn't rename \"{}\": {e}",
+                old_name.to_string()
+            )));
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -720,6 +726,10 @@ impl qobject::FileListModel {
         let target = current.join(name.to_string());
         if let Err(e) = runtime().block_on(fm_core::trash::move_to_trash(&target)) {
             eprintln!("delete_entry failed: {e}");
+            self.as_mut().error_occurred(QString::from(&format!(
+                "Couldn't delete \"{}\": {e}",
+                name.to_string()
+            )));
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -751,6 +761,8 @@ impl qobject::FileListModel {
     fn empty_trash(mut self: core::pin::Pin<&mut Self>) {
         if let Err(e) = runtime().block_on(fm_core::trash::empty_trash()) {
             eprintln!("empty_trash failed: {e}");
+            self.as_mut()
+                .error_occurred(QString::from(&format!("Couldn't empty trash: {e}")));
         }
         if self.current_path.to_string() == self.trash_path.to_string() {
             self.as_mut().refresh_entries_diff();
@@ -841,11 +853,15 @@ impl qobject::FileListModel {
         }
     }
 
-    fn open_entry(self: core::pin::Pin<&mut Self>, name: &QString) {
+    fn open_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(name.to_string());
         if let Err(e) = runtime().block_on(fm_core::ops::open_file(&target)) {
             eprintln!("open_entry failed: {e}");
+            self.as_mut().error_occurred(QString::from(&format!(
+                "Couldn't open \"{}\": {e}",
+                name.to_string()
+            )));
         }
     }
 
@@ -854,6 +870,10 @@ impl qobject::FileListModel {
         let target = current.join(name.to_string());
         if let Err(e) = runtime().block_on(fm_core::ops::duplicate(&target)) {
             eprintln!("duplicate_entry failed: {e}");
+            self.as_mut().error_occurred(QString::from(&format!(
+                "Couldn't duplicate \"{}\": {e}",
+                name.to_string()
+            )));
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -882,10 +902,12 @@ impl qobject::FileListModel {
         });
     }
 
-    fn open_terminal_here(self: core::pin::Pin<&mut Self>) {
+    fn open_terminal_here(mut self: core::pin::Pin<&mut Self>) {
         let current = PathBuf::from(self.current_path.to_string());
         if let Err(e) = runtime().block_on(fm_core::ops::open_terminal(&current)) {
             eprintln!("open_terminal_here failed: {e}");
+            self.as_mut()
+                .error_occurred(QString::from(&format!("Couldn't open terminal here: {e}")));
         }
     }
 
