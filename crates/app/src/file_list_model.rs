@@ -2091,6 +2091,44 @@ fn pluralize_items(count: usize) -> String {
     }
 }
 
+/// True when a re-listed entry's user-visible metadata differs from the
+/// stored one. Callers already match on name+is_dir, so those aren't
+/// compared here. icon_key is derived from mime_type, so comparing the
+/// mime covers it.
+fn entry_metadata_changed(old: &fm_core::FileEntry, new: &fm_core::FileEntry) -> bool {
+    old.size != new.size
+        || old.modified != new.modified
+        || old.permissions != new.permissions
+        || old.mime_type != new.mime_type
+}
+
+/// Carries already-resolved thumbnail paths from the previous listing onto
+/// a fresh one, matched by (name, is_dir) with an unchanged mtime — a
+/// fresh listing always starts with thumbnail_path: None, and dropping the
+/// resolved paths on every refresh made each live refresh flicker every
+/// visible thumbnail and re-probe the cache. A changed mtime means the old
+/// thumbnail is stale, so it deliberately does not carry over.
+fn carry_over_thumbnails(old: &[fm_core::FileEntry], new: &mut [fm_core::FileEntry]) {
+    let old_thumbs: std::collections::HashMap<(&str, bool), (std::time::SystemTime, &PathBuf)> =
+        old.iter()
+            .filter_map(|e| {
+                e.thumbnail_path
+                    .as_ref()
+                    .map(|t| ((e.name.as_str(), e.is_dir), (e.modified, t)))
+            })
+            .collect();
+    for entry in new.iter_mut() {
+        if entry.thumbnail_path.is_some() {
+            continue;
+        }
+        if let Some((modified, thumb)) = old_thumbs.get(&(entry.name.as_str(), entry.is_dir)) {
+            if *modified == entry.modified {
+                entry.thumbnail_path = Some((*thumb).clone());
+            }
+        }
+    }
+}
+
 /// One undoable operation, recorded after it succeeded, holding the paths
 /// that actually resulted (post-uniquification). Every pair Vec is
 /// (before, after) in the operation's own forward direction.
@@ -2344,5 +2382,89 @@ mod undo_journal_tests {
             .describe(),
             "Restored 1 item"
         );
+    }
+}
+
+#[cfg(test)]
+mod live_refresh_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{Duration, SystemTime};
+
+    fn entry(name: &str) -> fm_core::FileEntry {
+        fm_core::FileEntry {
+            name: name.to_string(),
+            path: PathBuf::from(name),
+            is_dir: false,
+            size: 10,
+            modified: SystemTime::UNIX_EPOCH,
+            mime_type: "text/plain".to_string(),
+            icon_key: "text".to_string(),
+            permissions: "rw-r--r--".to_string(),
+            thumbnail_path: None,
+        }
+    }
+
+    #[test]
+    fn metadata_is_unchanged_for_identical_entries() {
+        assert!(!entry_metadata_changed(&entry("a"), &entry("a")));
+    }
+
+    #[test]
+    fn metadata_change_detects_size_modified_permissions_and_mime() {
+        let base = entry("a");
+
+        let mut grown = entry("a");
+        grown.size = 999;
+        assert!(entry_metadata_changed(&base, &grown));
+
+        let mut touched = entry("a");
+        touched.modified = SystemTime::UNIX_EPOCH + Duration::from_secs(5);
+        assert!(entry_metadata_changed(&base, &touched));
+
+        let mut chmodded = entry("a");
+        chmodded.permissions = "rwxr-xr-x".to_string();
+        assert!(entry_metadata_changed(&base, &chmodded));
+
+        let mut retyped = entry("a");
+        retyped.mime_type = "application/pdf".to_string();
+        assert!(entry_metadata_changed(&base, &retyped));
+    }
+
+    #[test]
+    fn thumbnails_carry_over_when_name_kind_and_mtime_match() {
+        let mut old_entry = entry("photo.jpg");
+        old_entry.thumbnail_path = Some(PathBuf::from("/cache/thumb.png"));
+        let old = vec![old_entry];
+        let mut new = vec![entry("photo.jpg")];
+
+        carry_over_thumbnails(&old, &mut new);
+        assert_eq!(new[0].thumbnail_path, Some(PathBuf::from("/cache/thumb.png")));
+    }
+
+    #[test]
+    fn thumbnails_do_not_carry_over_when_mtime_changed() {
+        let mut old_entry = entry("photo.jpg");
+        old_entry.thumbnail_path = Some(PathBuf::from("/cache/thumb.png"));
+        let old = vec![old_entry];
+        let mut fresh = entry("photo.jpg");
+        fresh.modified = SystemTime::UNIX_EPOCH + Duration::from_secs(5);
+        let mut new = vec![fresh];
+
+        carry_over_thumbnails(&old, &mut new);
+        assert_eq!(new[0].thumbnail_path, None);
+    }
+
+    #[test]
+    fn carry_over_never_overwrites_an_already_resolved_thumbnail() {
+        let mut old_entry = entry("photo.jpg");
+        old_entry.thumbnail_path = Some(PathBuf::from("/cache/old.png"));
+        let old = vec![old_entry];
+        let mut fresh = entry("photo.jpg");
+        fresh.thumbnail_path = Some(PathBuf::from("/cache/new.png"));
+        let mut new = vec![fresh];
+
+        carry_over_thumbnails(&old, &mut new);
+        assert_eq!(new[0].thumbnail_path, Some(PathBuf::from("/cache/new.png")));
     }
 }
