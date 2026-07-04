@@ -148,6 +148,16 @@ pub mod qobject {
         #[cxx_name = "deleteEntry"]
         fn delete_entry(self: Pin<&mut FileListModel>, name: &QString);
 
+        /// Moves every currently-selected entry to Trash. Unlike
+        /// deleteEntry (synchronous — fine for one item), this runs as a
+        /// background task so trashing a large selection doesn't hitch the
+        /// UI thread, using the same isBusy/busyLabel indicator pasteEntry
+        /// already exposes (no byte-progress — Trash moves are fast enough
+        /// that a spinner is enough).
+        #[qinvokable]
+        #[cxx_name = "deleteSelection"]
+        fn delete_selection(self: Pin<&mut FileListModel>);
+
         /// Permanently removes everything in the freedesktop Trash (files
         /// and their .trashinfo sidecars) — not a move-to-trash, so this
         /// one has no recovery path. Refreshes the listing afterward when
@@ -163,6 +173,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "duplicateEntry"]
         fn duplicate_entry(self: Pin<&mut FileListModel>, name: &QString);
+
+        /// Multi-item counterpart to duplicateEntry — same background-task
+        /// pattern as deleteSelection.
+        #[qinvokable]
+        #[cxx_name = "duplicateSelection"]
+        fn duplicate_selection(self: Pin<&mut FileListModel>);
 
         #[qinvokable]
         #[cxx_name = "openTerminalHere"]
@@ -674,6 +690,30 @@ impl qobject::FileListModel {
         self.as_mut().refresh_entries_diff();
     }
 
+    fn delete_selection(mut self: core::pin::Pin<&mut Self>) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let targets: Vec<PathBuf> = self.selected.iter().map(|name| current.join(name)).collect();
+        if targets.is_empty() {
+            return;
+        }
+
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Deleting…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            for target in targets {
+                if let Err(e) = fm_core::trash::move_to_trash(&target).await {
+                    eprintln!("delete_selection failed for {}: {e}", target.display());
+                }
+            }
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+            });
+        });
+    }
+
     fn empty_trash(mut self: core::pin::Pin<&mut Self>) {
         if let Err(e) = runtime().block_on(fm_core::trash::empty_trash()) {
             eprintln!("empty_trash failed: {e}");
@@ -782,6 +822,30 @@ impl qobject::FileListModel {
             eprintln!("duplicate_entry failed: {e}");
         }
         self.as_mut().refresh_entries_diff();
+    }
+
+    fn duplicate_selection(mut self: core::pin::Pin<&mut Self>) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let targets: Vec<PathBuf> = self.selected.iter().map(|name| current.join(name)).collect();
+        if targets.is_empty() {
+            return;
+        }
+
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Duplicating…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            for target in targets {
+                if let Err(e) = fm_core::ops::duplicate(&target).await {
+                    eprintln!("duplicate_selection failed for {}: {e}", target.display());
+                }
+            }
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+            });
+        });
     }
 
     fn open_terminal_here(self: core::pin::Pin<&mut Self>) {
