@@ -201,7 +201,7 @@ Window {
         deletePermanentlyConfirmDialogLoader.active
 
     Shortcut {
-        sequence: StandardKey.Delete
+        sequences: [StandardKey.Delete]
         onActivated: {
             if (window.anyPopupOpen) return
             if (fileModel.selectedCount() > 0) {
@@ -221,7 +221,7 @@ Window {
     }
 
     Shortcut {
-        sequence: StandardKey.Copy
+        sequences: [StandardKey.Copy]
         onActivated: {
             if (window.anyPopupOpen) return
             fileModel.copySelection()
@@ -229,7 +229,7 @@ Window {
     }
 
     Shortcut {
-        sequence: StandardKey.Cut
+        sequences: [StandardKey.Cut]
         onActivated: {
             if (window.anyPopupOpen) return
             fileModel.cutSelection()
@@ -237,7 +237,7 @@ Window {
     }
 
     Shortcut {
-        sequence: StandardKey.Paste
+        sequences: [StandardKey.Paste]
         onActivated: {
             if (window.anyPopupOpen) return
             fileModel.pasteEntry()
@@ -263,7 +263,7 @@ Window {
     }
 
     Shortcut {
-        sequence: StandardKey.Cancel
+        sequences: [StandardKey.Cancel]
         onActivated: {
             if (!window.anyPopupOpen) {
                 fileModel.clearSelection()
