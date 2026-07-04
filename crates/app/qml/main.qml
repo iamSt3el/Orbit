@@ -497,6 +497,35 @@ Window {
                                     border.color: Color.scheme.primary
                                 }
 
+                                // Accepts drops landing on empty space (not on a
+                                // specific folder row, which FileListItem's own
+                                // DropArea already handles) — imports into the
+                                // current folder. Rejects our own internal drags
+                                // (dropping one of our own items back into the
+                                // folder it's already in is a no-op, not an
+                                // import); a genuinely external drop never
+                                // carries that key.
+                                DropArea {
+                                    anchors.fill: parent
+                                    keys: ["text/uri-list"]
+                                    onDropped: (drop) => {
+                                        if (!drop.hasUrls) {
+                                            return
+                                        }
+                                        if (drop.keys.indexOf("application/x-filemanager-internal") !== -1) {
+                                            drop.accepted = false
+                                            return
+                                        }
+                                        var isMove = drop.proposedAction === Qt.MoveAction
+                                        drop.acceptProposedAction()
+                                        var paths = []
+                                        for (var i = 0; i < drop.urls.length; i++) {
+                                            paths.push(drop.urls[i].toString().replace("file://", ""))
+                                        }
+                                        fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
+                                    }
+                                }
+
                                 ScrollBar {
                                     anchors.top: parent.top
                                     anchors.right: parent.right
@@ -641,6 +670,28 @@ Window {
                                     color: Qt.alpha(Color.scheme.primary, 0.16)
                                     border.width: 1
                                     border.color: Color.scheme.primary
+                                }
+
+                                // See the matching comment on listView's DropArea.
+                                DropArea {
+                                    anchors.fill: parent
+                                    keys: ["text/uri-list"]
+                                    onDropped: (drop) => {
+                                        if (!drop.hasUrls) {
+                                            return
+                                        }
+                                        if (drop.keys.indexOf("application/x-filemanager-internal") !== -1) {
+                                            drop.accepted = false
+                                            return
+                                        }
+                                        var isMove = drop.proposedAction === Qt.MoveAction
+                                        drop.acceptProposedAction()
+                                        var paths = []
+                                        for (var i = 0; i < drop.urls.length; i++) {
+                                            paths.push(drop.urls[i].toString().replace("file://", ""))
+                                        }
+                                        fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
+                                    }
                                 }
 
                                 ScrollBar {
