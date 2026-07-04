@@ -33,7 +33,8 @@ Window {
     readonly property var iconSizeProfiles: ({
         small: { listIcon: 18, listContainer: 32, gridIcon: 24, gridContainer: 44, gridCell: 104, gridMinWidth: 90 },
         medium: { listIcon: 22, listContainer: 40, gridIcon: 32, gridContainer: 56, gridCell: 132, gridMinWidth: 110 },
-        large: { listIcon: 28, listContainer: 48, gridIcon: 40, gridContainer: 68, gridCell: 160, gridMinWidth: 132 }
+        large: { listIcon: 28, listContainer: 48, gridIcon: 40, gridContainer: 68, gridCell: 160, gridMinWidth: 132 },
+        extraLarge: { listIcon: 36, listContainer: 56, gridIcon: 48, gridContainer: 80, gridCell: 188, gridMinWidth: 150 }
     })
     readonly property var activeIconProfile: iconSizeProfiles[fileModel.iconSizeLevel] || iconSizeProfiles.medium
 

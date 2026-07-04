@@ -41,6 +41,8 @@ Item {
         { key: "type", label: "Type" }
     ]
 
+    readonly property var _iconSizeLevels: ["small", "medium", "large", "extraLarge"]
+
     function popup(x, y) {
         menu.x = Math.min(x, root.width - menu.width)
         menu.y = Math.min(y, root.height - menu.height)
@@ -232,20 +234,16 @@ Item {
                 font.pixelSize: Type.labelMedium.size
             }
 
-            ButtonGroup {
-                width: parent.width
-                fillWidth: true
-                height: 32
-                textSize: 12
-                model: [
-                    { value: "small", label: "Small" },
-                    { value: "medium", label: "Medium" },
-                    { value: "large", label: "Large" }
-                ]
-                activeCheck: (value) => value === root.iconSizeLevel
-                onSegmentClicked: (value) => {
-                    root.iconSizeLevel = value
-                    root.iconSizeSelected(value)
+            M3Slider {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width - 16
+                stepCount: root._iconSizeLevels.length
+                stepLabels: ["Small", "Medium", "Large", "XL"]
+                currentStep: Math.max(0, root._iconSizeLevels.indexOf(root.iconSizeLevel))
+                onStepChanged: (step) => {
+                    var level = root._iconSizeLevels[step]
+                    root.iconSizeLevel = level
+                    root.iconSizeSelected(level)
                 }
             }
         }
