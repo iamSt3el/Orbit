@@ -129,7 +129,7 @@ pub fn copy_with_progress(
 
             let mut reader = tokio::fs::File::open(&src).await?;
             let mut writer = tokio::fs::File::create(&dst).await?;
-            let mut buf = vec![0u8; 256 * 1024];
+            let mut buf = vec![0u8; 1024 * 1024];
             loop {
                 let n = reader.read(&mut buf).await?;
                 if n == 0 {
@@ -139,6 +139,13 @@ pub fn copy_with_progress(
                 let total = done.fetch_add(n as u64, Ordering::Relaxed) + n as u64;
                 let _ = tx.send(total);
             }
+            // Surface any buffered write error here instead of losing it
+            // in the file's silent drop.
+            writer.flush().await?;
+            // tokio::fs::copy (the non-progress path) preserves mode bits;
+            // a manual read/write loop must do it itself or every copied
+            // executable silently loses its +x bit.
+            tokio::fs::set_permissions(&dst, metadata.permissions()).await?;
             Ok(())
         }
     })

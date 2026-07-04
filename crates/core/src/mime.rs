@@ -22,14 +22,21 @@ pub fn detect(path: &Path) -> MimeInfo {
         };
     }
 
-    if let Ok(bytes) = fs::read(path) {
-        let sniff_len = bytes.len().min(8192);
-        if let Some(kind) = infer::get(&bytes[..sniff_len]) {
-            let mime = kind.mime_type();
-            return MimeInfo {
-                icon_key: icon_key_for(mime),
-                mime_type: mime.to_string(),
-            };
+    // Bounded read: only the first 8KB ever leaves the disk. fs::read()
+    // here would load the ENTIRE file into memory just to sniff its magic
+    // bytes — for an extension-less multi-GB file that meant a multi-GB
+    // allocation during a plain directory listing.
+    if let Ok(file) = fs::File::open(path) {
+        use std::io::Read;
+        let mut bytes = Vec::with_capacity(8192);
+        if file.take(8192).read_to_end(&mut bytes).is_ok() {
+            if let Some(kind) = infer::get(&bytes) {
+                let mime = kind.mime_type();
+                return MimeInfo {
+                    icon_key: icon_key_for(mime),
+                    mime_type: mime.to_string(),
+                };
+            }
         }
     }
 

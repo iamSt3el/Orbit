@@ -179,6 +179,27 @@ async fn copy_with_progress_copies_the_file_and_reports_the_final_total() {
 }
 
 #[tokio::test]
+async fn copy_with_progress_preserves_the_source_permission_bits() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("tool.sh");
+    fs::write(&src, b"#!/bin/sh\n").unwrap();
+    fs::set_permissions(&src, fs::Permissions::from_mode(0o755)).unwrap();
+    let dst = dir.path().join("tool-copy.sh");
+
+    let done = Arc::new(AtomicU64::new(0));
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+
+    ops::copy_with_progress(src.clone(), dst.clone(), done, tx)
+        .await
+        .unwrap();
+
+    let mode = fs::metadata(&dst).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o755, "copied executable must keep its +x bit");
+}
+
+#[tokio::test]
 async fn copy_with_progress_copies_a_directory_tree() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("srcdir");
