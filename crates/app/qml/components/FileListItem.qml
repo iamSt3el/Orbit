@@ -184,7 +184,6 @@ Item {
                 anchors.rightMargin: -4
                 anchors.bottomMargin: -4
                 selected: root.selected
-                hovered: rowArea.containsMouse
                 onToggleRequested: root.fileModel.setSelected(root.name, !root.selected)
             }
         }

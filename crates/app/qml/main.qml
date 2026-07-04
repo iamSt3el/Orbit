@@ -40,13 +40,19 @@ Window {
     FileListModel {
         id: fileModel
 
+        // Reactive, not one-shot — themeColorsText is kept live by a
+        // background watcher (FileListModel.startThemeColorsWatch()), so
+        // editing colors.json while the app is running re-applies the
+        // theme automatically, not just at startup.
+        onThemeColorsTextChanged: Color.applyCustomColors(fileModel.themeColorsText)
+
         Component.onCompleted: {
             // A singleton (Color.qml) can be instantiated before this
             // object exists, so it can't read the theme file itself —
-            // read it here (Rust-side, not QML XHR — see
-            // FileListModel.readThemeColorsFile()) now that fileModel
+            // this is Rust-side file I/O (see FileListModel.
+            // startThemeColorsWatch()), not QML XHR, now that fileModel
             // is ready.
-            Color.applyCustomColors(fileModel.readThemeColorsFile())
+            fileModel.startThemeColorsWatch()
             // CLI arg wins if given; otherwise resume wherever the last
             // session left off (if that's enabled in Settings); otherwise
             // fall back to home.

@@ -30,6 +30,13 @@ pub mod qobject {
         #[qproperty(QString, documents_path, cxx_name = "documentsPath")]
         #[qproperty(QString, trash_path, cxx_name = "trashPath")]
         #[qproperty(QString, theme_colors_path, cxx_name = "themeColorsPath")]
+        // Live contents of themeColorsPath's file, kept current by a
+        // background watcher (see start_theme_colors_watch()) — QML binds
+        // Color.applyCustomColors to this reactively instead of only
+        // reading it once at startup, so editing colors.json on disk
+        // reapplies the theme without needing the "Reload theme colors"
+        // Settings action.
+        #[qproperty(QString, theme_colors_text, cxx_name = "themeColorsText")]
         #[qproperty(QString, view_mode, cxx_name = "viewMode")]
         #[qproperty(QString, icon_size_level, cxx_name = "iconSizeLevel")]
         #[qproperty(QString, saved_last_path, cxx_name = "savedLastPath")]
@@ -247,6 +254,18 @@ pub mod qobject {
         #[cxx_name = "saveSettings"]
         fn save_settings(self: &FileListModel);
 
+        /// Populates themeColorsText immediately with the file's current
+        /// contents (if any) and starts a background watch on its parent
+        /// directory (not the file itself — editors commonly replace a
+        /// file via a temp-file-then-rename swap, which a watch on the
+        /// file's own inode would miss) so themeColorsText updates
+        /// automatically whenever colors.json changes on disk. Call once,
+        /// after the model exists — same reasoning as
+        /// readThemeColorsFile's doc comment.
+        #[qinvokable]
+        #[cxx_name = "startThemeColorsWatch"]
+        fn start_theme_colors_watch(self: Pin<&mut FileListModel>);
+
         // show_hidden/sort_key/sort_ascending aren't qproperties (their
         // setters already exist as setShowHidden/setSortKey/
         // setSortAscending, which do a model reset a plain qproperty
@@ -335,6 +354,10 @@ pub struct FileListModelRust {
     documents_path: QString,
     trash_path: QString,
     theme_colors_path: QString,
+    theme_colors_text: QString,
+    /// Kept alive only for its Drop impl (stops the OS-level watch when
+    /// the model is destroyed) — never read otherwise.
+    theme_colors_watcher: Option<fm_core::watcher::DirWatcher>,
     view_mode: QString,
     icon_size_level: QString,
     saved_last_path: QString,
@@ -391,6 +414,8 @@ impl Default for FileListModelRust {
             documents_path: path_or_empty(fm_core::paths::document_dir()),
             trash_path: path_or_empty(fm_core::paths::trash_dir()),
             theme_colors_path: path_or_empty(fm_core::paths::theme_colors_path()),
+            theme_colors_text: QString::from(""),
+            theme_colors_watcher: None,
             view_mode: QString::from(&settings.view_mode),
             icon_size_level: QString::from(&settings.icon_size_level),
             saved_last_path: QString::from(&settings.last_path),
@@ -1136,6 +1161,51 @@ impl qobject::FileListModel {
         std::fs::read_to_string(self.theme_colors_path.to_string())
             .map(|contents| QString::from(&contents))
             .unwrap_or_else(|_| QString::from(""))
+    }
+
+    fn start_theme_colors_watch(mut self: core::pin::Pin<&mut Self>) {
+        let initial = self.read_theme_colors_file();
+        self.as_mut().set_theme_colors_text(initial);
+
+        let path = PathBuf::from(self.theme_colors_path.to_string());
+        let Some(parent) = path.parent().map(|p| p.to_path_buf()) else {
+            return;
+        };
+        if !parent.exists() {
+            return;
+        }
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let watcher = match fm_core::watcher::DirWatcher::new(&parent, tx) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("start_theme_colors_watch failed: {e}");
+                return;
+            }
+        };
+        self.as_mut().rust_mut().theme_colors_watcher = Some(watcher);
+
+        let watch_path = path;
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            while let Some(event) = rx.recv().await {
+                let touched = match &event {
+                    fm_core::watcher::WatchEvent::Created(p) => p == &watch_path,
+                    fm_core::watcher::WatchEvent::Modified(p) => p == &watch_path,
+                    fm_core::watcher::WatchEvent::Renamed { to, .. } => to == &watch_path,
+                    _ => false,
+                };
+                if !touched {
+                    continue;
+                }
+                let contents = tokio::fs::read_to_string(&watch_path)
+                    .await
+                    .unwrap_or_default();
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().set_theme_colors_text(QString::from(&contents));
+                });
+            }
+        });
     }
 
     /// Persists the current view mode, sort order, icon size, hidden-file

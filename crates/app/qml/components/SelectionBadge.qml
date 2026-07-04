@@ -6,8 +6,11 @@ import com.filemanager.app 1.0
 // A small corner badge on a file/folder's icon, layered on top of the
 // row/tile's existing flat selection tint (added by the multi-select
 // feature — see FileListItem.qml/FileGridItem.qml's `selected`-bound
-// Rectangle). Unselected, it's a faint circle outline that only shows on
-// hover — a "tap to select" affordance; selected, it morphs (via the same
+// Rectangle). Purely binary on `selected`, not blended with hover — a
+// hover-preview opacity was tried first and it meant clicking to
+// deselect only faded the badge to a lingering half-opacity outline
+// (since the row was still hovered right after the click) instead of
+// making it disappear outright. Selected, it morphs (via the same
 // ShapeCanvas/MatrialShapes primitive ShapeLoader.qml uses) into a
 // filled gem shape with a checkmark on top. A gem (not a many-lobed
 // cookie/burst shape) was chosen because a busier polygon's lobes blur
@@ -16,11 +19,10 @@ Item {
     id: root
 
     property bool selected: false
-    property bool hovered: false
 
     signal toggleRequested
 
-    opacity: root.selected ? 1 : (root.hovered ? 0.5 : 0)
+    opacity: root.selected ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
     MaterialShapes.ShapeCanvas {

@@ -85,19 +85,22 @@ Item {
                     isFirst: true
                     isLast: false
 
-                    // A plain anchors-based row (not RowLayout) — Qt Quick
-                    // Layouts don't support anchoring a MouseArea to a
-                    // layout-managed sibling, and the whole row (not just
-                    // the switch) should be clickable.
-                    Item {
+                    // RowLayout with a small FIXED-size wrapper around the
+                    // switch (Layout.preferredWidth/Height, not fillWidth) —
+                    // matching TopAppBar's icon-button pattern (Item with
+                    // Layout.preferredWidth + an anchors.fill Rectangle/
+                    // MouseArea inside it), which is the proven-working
+                    // pattern in this app. The previous version wrapped the
+                    // whole row in one Layout.fillWidth Item with the
+                    // MouseArea anchored across that stretchy width — that's
+                    // what was swallowing clicks/hover before they reached
+                    // the switch. Only the switch itself is clickable now,
+                    // not the whole row.
+                    RowLayout {
                         Layout.fillWidth: true
-                        implicitHeight: 40
 
                         Text {
-                            anchors.left: parent.left
-                            anchors.right: toggleTrack.left
-                            anchors.rightMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.fillWidth: true
                             text: "Resume last folder on startup"
                             wrapMode: Text.Wrap
                             color: Color.scheme.surfaceText
@@ -105,37 +108,39 @@ Item {
                             font.pixelSize: Type.bodyLarge.size
                         }
 
-                        Rectangle {
-                            id: toggleTrack
-                            width: 40
-                            height: 22
-                            radius: Shape.full
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: root.resumeLastPath ? Color.scheme.primary : Color.scheme.surfaceContainerHighest
-                            border.width: root.resumeLastPath ? 0 : 1
-                            border.color: Color.scheme.outline
-                            Behavior on color { ColorAnimation { duration: 120 } }
+                        Item {
+                            Layout.preferredWidth: 40
+                            Layout.preferredHeight: 22
 
                             Rectangle {
-                                width: 16
-                                height: 16
+                                id: toggleTrack
+                                anchors.fill: parent
                                 radius: Shape.full
-                                color: Color.scheme.surface
-                                anchors.verticalCenter: parent.verticalCenter
-                                x: root.resumeLastPath ? parent.width - width - 3 : 3
-                                Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-                            }
-                        }
+                                color: root.resumeLastPath ? Color.scheme.primary : Color.scheme.surfaceContainerHighest
+                                border.width: root.resumeLastPath ? 0 : 1
+                                border.color: Color.scheme.outline
+                                Behavior on color { ColorAnimation { duration: 120 } }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                root.resumeLastPath = !root.resumeLastPath
-                                if (root.fileModel) {
-                                    root.fileModel.resumeLastPath = root.resumeLastPath
-                                    root.fileModel.saveSettings()
+                                Rectangle {
+                                    width: 16
+                                    height: 16
+                                    radius: Shape.full
+                                    color: Color.scheme.surface
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: root.resumeLastPath ? parent.width - width - 3 : 3
+                                    Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.resumeLastPath = !root.resumeLastPath
+                                        if (root.fileModel) {
+                                            root.fileModel.resumeLastPath = root.resumeLastPath
+                                            root.fileModel.saveSettings()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -146,13 +151,19 @@ Item {
                     isFirst: false
                     isLast: true
 
+                    // Theme colors now reload automatically when
+                    // colors.json changes on disk (see main.qml's
+                    // themeColorsText binding) — this stays as a manual
+                    // fallback/override, same fixed-size-wrapper pattern as
+                    // the toggle above (Row sized to its own content, not
+                    // Layout.fillWidth) so its MouseArea only covers the
+                    // icon+label, not the whole row.
                     Item {
-                        Layout.fillWidth: true
-                        implicitHeight: 40
+                        implicitWidth: _reloadRow.implicitWidth
+                        implicitHeight: _reloadRow.implicitHeight
 
                         Row {
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
+                            id: _reloadRow
                             spacing: 10
 
                             Icon {
