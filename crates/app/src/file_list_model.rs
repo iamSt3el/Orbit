@@ -746,14 +746,22 @@ impl qobject::FileListModel {
 
         let qt_thread = self.qt_thread();
         runtime().spawn(async move {
+            let mut failed: usize = 0;
             for target in targets {
                 if let Err(e) = fm_core::trash::move_to_trash(&target).await {
                     eprintln!("delete_selection failed for {}: {e}", target.display());
+                    failed += 1;
                 }
             }
             let _ = qt_thread.queue(move |mut model| {
                 model.as_mut().set_is_busy(false);
                 model.as_mut().refresh_entries_diff();
+                if failed > 0 {
+                    model.as_mut().error_occurred(QString::from(&format!(
+                        "Couldn't delete {}",
+                        pluralize_items(failed)
+                    )));
+                }
             });
         });
     }
@@ -890,14 +898,22 @@ impl qobject::FileListModel {
 
         let qt_thread = self.qt_thread();
         runtime().spawn(async move {
+            let mut failed: usize = 0;
             for target in targets {
                 if let Err(e) = fm_core::ops::duplicate(&target).await {
                     eprintln!("duplicate_selection failed for {}: {e}", target.display());
+                    failed += 1;
                 }
             }
             let _ = qt_thread.queue(move |mut model| {
                 model.as_mut().set_is_busy(false);
                 model.as_mut().refresh_entries_diff();
+                if failed > 0 {
+                    model.as_mut().error_occurred(QString::from(&format!(
+                        "Couldn't duplicate {}",
+                        pluralize_items(failed)
+                    )));
+                }
             });
         });
     }
@@ -1005,7 +1021,7 @@ impl qobject::FileListModel {
         });
 
         runtime().spawn(async move {
-            let mut last_error = None;
+            let mut failed: usize = 0;
             for src in sources {
                 let Some(file_name) = src.file_name().map(|n| n.to_os_string()) else {
                     continue;
@@ -1030,18 +1046,21 @@ impl qobject::FileListModel {
                 };
                 if let Err(e) = result {
                     eprintln!("paste_entry failed for {}: {e}", src.display());
-                    last_error = Some(e);
+                    failed += 1;
                 }
             }
 
             let _ = qt_thread.queue(move |mut model| {
-                if let Some(e) = last_error {
-                    eprintln!("paste_entry: at least one item in the batch failed: {e}");
-                }
                 model.as_mut().set_is_busy(false);
                 model.as_mut().set_transfer_done_bytes(0);
                 model.as_mut().set_transfer_total_bytes(0);
                 model.as_mut().refresh_entries_diff();
+                if failed > 0 {
+                    model.as_mut().error_occurred(QString::from(&format!(
+                        "Couldn't paste {}",
+                        pluralize_items(failed)
+                    )));
+                }
             });
         });
     }
