@@ -565,7 +565,7 @@ impl qobject::FileListModel {
         if names.is_empty() {
             return;
         }
-        self.as_mut().rust_mut().selected.extend(names);
+        self.as_mut().rust_mut().selected = names.into_iter().collect();
 
         if matching.is_empty() {
             return;
