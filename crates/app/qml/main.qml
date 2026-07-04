@@ -735,4 +735,13 @@ Window {
             onClosed: Qt.callLater(() => settingsDialogLoader.active = false)
         }
     }
+
+    Connections {
+        target: fileModel
+        function onErrorOccurred(message) { snackbar.show(message) }
+    }
+
+    Snackbar {
+        id: snackbar
+    }
 }
