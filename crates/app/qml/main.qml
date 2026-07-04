@@ -526,6 +526,8 @@ Window {
                             }
                         }
 
+                        DecorativeShapesBackground {}
+
                         Loader {
                             anchors.fill: parent
                             sourceComponent: fileModel.viewMode === "grid" ? gridComponent : listComponent
