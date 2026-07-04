@@ -349,9 +349,12 @@ Window {
                                             if (child.name === undefined) {
                                                 continue
                                             }
-                                            var overlaps = child.x < rectRight && (child.x + child.width) > rectLeft &&
-                                                           child.y < rectBottom && (child.y + child.height) > rectTop
-                                            if (overlaps) {
+                                            // Full containment, not mere overlap — a row
+                                            // just grazed by the selector's edge shouldn't
+                                            // get selected, only ones entirely inside it.
+                                            var contained = child.x >= rectLeft && (child.x + child.width) <= rectRight &&
+                                                            child.y >= rectTop && (child.y + child.height) <= rectBottom
+                                            if (contained) {
                                                 fileModel.setSelected(child.name, true)
                                             }
                                         }
@@ -484,9 +487,12 @@ Window {
                                             if (child.name === undefined) {
                                                 continue
                                             }
-                                            var overlaps = child.x < rectRight && (child.x + child.width) > rectLeft &&
-                                                           child.y < rectBottom && (child.y + child.height) > rectTop
-                                            if (overlaps) {
+                                            // Full containment, not mere overlap — a cell
+                                            // just grazed by the selector's edge shouldn't
+                                            // get selected, only ones entirely inside it.
+                                            var contained = child.x >= rectLeft && (child.x + child.width) <= rectRight &&
+                                                            child.y >= rectTop && (child.y + child.height) <= rectBottom
+                                            if (contained) {
                                                 fileModel.setSelected(child.name, true)
                                             }
                                         }

@@ -47,6 +47,8 @@ Item {
         root.closed()
     }
 
+    readonly property bool _isImage: !root.entryIsDir && root.entryMimeType.indexOf("image/") === 0
+
     readonly property var _facts: [
         {
             icon: "category",
@@ -107,7 +109,48 @@ Item {
                 width: parent.width
                 spacing: 8
 
+                // Real preview for images instead of the generic file
+                // glyph — loads the actual file directly (not the list
+                // view's cached thumbnail, which may not exist yet if this
+                // entry was never scrolled into view) since entryAbsolutePath
+                // is already exposed for this and Image handles its own
+                // async decode.
+                Item {
+                    visible: root._isImage
+                    width: parent.width
+                    height: 160
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Shape.medium
+                        color: Elevation.surfaceAt(1)
+                        clip: true
+
+                        Image {
+                            id: previewImage
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            visible: status === Image.Ready
+                            source: root._isImage && root.fileModel
+                                ? "file://" + root.fileModel.entryAbsolutePath(root.entryName)
+                                : ""
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            sourceSize.height: 320
+                        }
+
+                        Icon {
+                            anchors.centerIn: parent
+                            content: "image"
+                            iconSize: 32
+                            color: Color.scheme.surfaceVariantText
+                            visible: previewImage.status !== Image.Ready
+                        }
+                    }
+                }
+
                 Icon {
+                    visible: !root._isImage
                     anchors.horizontalCenter: parent.horizontalCenter
                     content: root.entryIsDir ? "folder" : "description"
                     iconSize: 40
