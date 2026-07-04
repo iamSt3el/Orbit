@@ -98,3 +98,88 @@ fn trash_info_contents(original_path: &Path) -> io::Result<String> {
         deletion_date
     ))
 }
+
+pub async fn restore(trashed_path: &Path) -> io::Result<PathBuf> {
+    let data_home = dirs::data_dir()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "XDG data dir not found"))?;
+    restore_in(trashed_path, &data_home).await
+}
+
+pub async fn restore_in(trashed_path: &Path, data_home: &Path) -> io::Result<PathBuf> {
+    let info_dir = data_home.join("Trash").join("info");
+    let trash_name = trashed_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
+    let info_path = info_dir.join(format!("{trash_name}.trashinfo"));
+
+    let info_contents = tokio::fs::read_to_string(&info_path).await?;
+    let original_path = parse_trashinfo_path(&info_contents)?;
+
+    if let Some(parent) = original_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let destination = unique_restore_destination(&original_path);
+
+    tokio::fs::rename(trashed_path, &destination).await?;
+    tokio::fs::remove_file(&info_path).await?;
+
+    Ok(destination)
+}
+
+fn parse_trashinfo_path(contents: &str) -> io::Result<PathBuf> {
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix("Path="))
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "trashinfo missing Path="))
+}
+
+fn unique_restore_destination(original: &Path) -> PathBuf {
+    if !original.exists() {
+        return original.to_path_buf();
+    }
+    let parent = original.parent().unwrap_or_else(|| Path::new(""));
+    let stem = original
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let ext = original.extension().and_then(|s| s.to_str());
+
+    let mut candidate = match ext {
+        Some(ext) => parent.join(format!("{stem} (restored).{ext}")),
+        None => parent.join(format!("{stem} (restored)")),
+    };
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = match ext {
+            Some(ext) => parent.join(format!("{stem} (restored {n}).{ext}")),
+            None => parent.join(format!("{stem} (restored {n})")),
+        };
+        n += 1;
+    }
+    candidate
+}
+
+pub async fn delete_permanently(trashed_path: &Path) -> io::Result<()> {
+    let data_home = dirs::data_dir()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "XDG data dir not found"))?;
+    delete_permanently_in(trashed_path, &data_home).await
+}
+
+pub async fn delete_permanently_in(trashed_path: &Path, data_home: &Path) -> io::Result<()> {
+    let info_dir = data_home.join("Trash").join("info");
+    let trash_name = trashed_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
+    let info_path = info_dir.join(format!("{trash_name}.trashinfo"));
+
+    if tokio::fs::metadata(trashed_path).await?.is_dir() {
+        tokio::fs::remove_dir_all(trashed_path).await?;
+    } else {
+        tokio::fs::remove_file(trashed_path).await?;
+    }
+    let _ = tokio::fs::remove_file(&info_path).await;
+    Ok(())
+}
