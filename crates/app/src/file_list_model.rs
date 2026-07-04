@@ -264,6 +264,19 @@ pub mod qobject {
         #[cxx_name = "dropPaths"]
         fn drop_paths(self: Pin<&mut FileListModel>, paths: &QString, dest_dir: &QString, is_move: bool);
 
+        /// Reverts the most recent undoable operation (Ctrl+Z), fail-safe:
+        /// entries whose files changed externally since are skipped and
+        /// reported, never overwritten. No-op while isBusy.
+        #[qinvokable]
+        #[cxx_name = "undo"]
+        fn undo(self: Pin<&mut FileListModel>);
+
+        /// Re-applies the most recently undone operation (Ctrl+Shift+Z).
+        /// Same fail-safe rules as undo. No-op while isBusy.
+        #[qinvokable]
+        #[cxx_name = "redo"]
+        fn redo(self: Pin<&mut FileListModel>);
+
         /// Kicks off background thumbnail generation/lookup for one entry —
         /// called from FileListItem/FileGridItem when a delegate holding an
         /// image becomes visible, not eagerly for the whole folder, so a
@@ -1238,6 +1251,76 @@ impl qobject::FileListModel {
         self.as_mut().transfer_batch(sources, dest, is_move, verb);
     }
 
+    fn undo(mut self: core::pin::Pin<&mut Self>) {
+        if self.is_busy {
+            return;
+        }
+        let Some(op) = self.as_mut().rust_mut().journal.pop_undo() else {
+            self.as_mut()
+                .operation_completed(QString::from("Nothing to undo"), false);
+            return;
+        };
+        let desc = op.describe();
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Undoing…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let (redo_record, failed) = execute_undo(op).await;
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+                if failed > 0 {
+                    model.as_mut().error_occurred(QString::from(&format!(
+                        "Couldn't undo {}",
+                        pluralize_items(failed)
+                    )));
+                }
+                if let Some(record) = redo_record {
+                    model.as_mut().rust_mut().journal.push_redo(record);
+                    model
+                        .as_mut()
+                        .operation_completed(QString::from(&format!("Undid: {desc}")), false);
+                }
+            });
+        });
+    }
+
+    fn redo(mut self: core::pin::Pin<&mut Self>) {
+        if self.is_busy {
+            return;
+        }
+        let Some(op) = self.as_mut().rust_mut().journal.pop_redo() else {
+            self.as_mut()
+                .operation_completed(QString::from("Nothing to redo"), false);
+            return;
+        };
+        let desc = op.describe();
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Redoing…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let (undo_record, failed) = execute_redo(op).await;
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+                if failed > 0 {
+                    model.as_mut().error_occurred(QString::from(&format!(
+                        "Couldn't redo {}",
+                        pluralize_items(failed)
+                    )));
+                }
+                if let Some(record) = undo_record {
+                    model.as_mut().rust_mut().journal.push_undo(record);
+                    model
+                        .as_mut()
+                        .operation_completed(QString::from(&format!("Redid: {desc}")), false);
+                }
+            });
+        });
+    }
+
     /// Shared copy/move-with-progress batch machinery for both pasteEntry
     /// (sources from clipboard_paths) and dropPaths (sources from a
     /// drag-and-drop). `verb` only affects the dev-facing eprintln! label
@@ -1588,6 +1671,249 @@ impl qobject::FileListModel {
 /// same convention as fm_core::ops::duplicate, needed here too since
 /// pasting into the same folder the entry was copied from (or any folder
 /// that already has a same-named entry) would otherwise silently overwrite.
+/// Moves src to dst, failing with AlreadyExists if anything already sits at
+/// dst — tokio::fs::rename (inside move_entry) silently replaces an
+/// existing file, which the undo conflict policy ("never overwrite")
+/// forbids. symlink_metadata, not exists(): a dangling symlink still
+/// occupies the name. The check-then-move race window is unavoidable and
+/// acceptable for interactive undo.
+async fn move_no_overwrite(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    if tokio::fs::symlink_metadata(dst).await.is_ok() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "destination already exists",
+        ));
+    }
+    fm_core::ops::move_entry(src, dst).await
+}
+
+/// Executes the inverse of `op`, entry by entry, fail-safe. Returns the
+/// record to push onto the redo stack — containing only the entries that
+/// succeeded, with fresh result paths where undoing produced new ones —
+/// plus the count of entries that failed. (None, n) when nothing succeeded.
+async fn execute_undo(op: UndoOp) -> (Option<UndoOp>, usize) {
+    match op {
+        UndoOp::Move { pairs } => {
+            let mut ok = Vec::new();
+            let mut failed = 0;
+            for (orig, new) in pairs {
+                match move_no_overwrite(&new, &orig).await {
+                    Ok(()) => ok.push((orig, new)),
+                    Err(e) => {
+                        eprintln!("undo move failed for {}: {e}", new.display());
+                        failed += 1;
+                    }
+                }
+            }
+            (
+                (!ok.is_empty()).then_some(UndoOp::Move { pairs: ok }),
+                failed,
+            )
+        }
+        UndoOp::Rename { from, to } => match move_no_overwrite(&to, &from).await {
+            Ok(()) => (Some(UndoOp::Rename { from, to }), 0),
+            Err(e) => {
+                eprintln!("undo rename failed for {}: {e}", to.display());
+                (None, 1)
+            }
+        },
+        UndoOp::TrashDelete { pairs } => {
+            let mut ok = Vec::new();
+            let mut failed = 0;
+            for (orig, trashed) in pairs {
+                // restore() uniquifies to "name (restored)" when the
+                // original spot is occupied — the fail-safe policy forbids
+                // that, so occupancy fails the entry up front instead.
+                if tokio::fs::symlink_metadata(&orig).await.is_ok() {
+                    eprintln!(
+                        "undo trash failed for {}: original location occupied",
+                        trashed.display()
+                    );
+                    failed += 1;
+                    continue;
+                }
+                match fm_core::trash::restore(&trashed).await {
+                    Ok(_) => ok.push((orig, trashed)),
+                    Err(e) => {
+                        eprintln!("undo trash failed for {}: {e}", trashed.display());
+                        failed += 1;
+                    }
+                }
+            }
+            // The trashed halves in the redo record are stale (the files
+            // just left the Trash) — execute_redo's TrashDelete arm
+            // ignores them and re-trashes the originals from scratch.
+            (
+                (!ok.is_empty()).then_some(UndoOp::TrashDelete { pairs: ok }),
+                failed,
+            )
+        }
+        UndoOp::CopyIn { pairs } => {
+            let mut ok = Vec::new();
+            let mut failed = 0;
+            for (src, created) in pairs {
+                // To Trash, never a permanent delete — move_to_trash never
+                // conflicts (the Trash spec uniquifies internally).
+                match fm_core::trash::move_to_trash(&created).await {
+                    Ok(_) => ok.push((src, created)),
+                    Err(e) => {
+                        eprintln!("undo copy failed for {}: {e}", created.display());
+                        failed += 1;
+                    }
+                }
+            }
+            (
+                (!ok.is_empty()).then_some(UndoOp::CopyIn { pairs: ok }),
+                failed,
+            )
+        }
+        UndoOp::CreateFolder { path } => match fm_core::trash::move_to_trash(&path).await {
+            Ok(_) => (Some(UndoOp::CreateFolder { path }), 0),
+            Err(e) => {
+                eprintln!("undo create-folder failed for {}: {e}", path.display());
+                (None, 1)
+            }
+        },
+        UndoOp::Restore { pairs } => {
+            let mut ok = Vec::new();
+            let mut failed = 0;
+            for (_stale_trashed, restored) in pairs {
+                // Re-trashing mints a brand-new Trash path — the redo
+                // record must carry it, not the stale pre-restore one,
+                // so redo restores the right files.
+                match fm_core::trash::move_to_trash(&restored).await {
+                    Ok(new_trashed) => ok.push((new_trashed, restored)),
+                    Err(e) => {
+                        eprintln!("undo restore failed for {}: {e}", restored.display());
+                        failed += 1;
+                    }
+                }
+            }
+            (
+                (!ok.is_empty()).then_some(UndoOp::Restore { pairs: ok }),
+                failed,
+            )
+        }
+    }
+}
+
+/// Re-executes `op` forward, entry by entry, fail-safe — the mirror of
+/// execute_undo. Returns the record to push back onto the undo stack (only
+/// the entries that succeeded, with fresh result paths) plus the failure
+/// count.
+async fn execute_redo(op: UndoOp) -> (Option<UndoOp>, usize) {
+    match op {
+        UndoOp::Move { pairs } => {
+            let mut ok = Vec::new();
+            let mut failed = 0;
+            for (orig, new) in pairs {
+                match move_no_overwrite(&orig, &new).await {
+                    Ok(()) => ok.push((orig, new)),
+                    Err(e) => {
+                        eprintln!("redo move failed for {}: {e}", orig.display());
+                        failed += 1;
+                    }
+                }
+            }
+            (
+                (!ok.is_empty()).then_some(UndoOp::Move { pairs: ok }),
+                failed,
+            )
+        }
+        UndoOp::Rename { from, to } => match move_no_overwrite(&from, &to).await {
+            Ok(()) => (Some(UndoOp::Rename { from, to }), 0),
+            Err(e) => {
+                eprintln!("redo rename failed for {}: {e}", from.display());
+                (None, 1)
+            }
+        },
+        UndoOp::TrashDelete { pairs } => {
+            let mut ok = Vec::new();
+            let mut failed = 0;
+            for (orig, _stale_trashed) in pairs {
+                match fm_core::trash::move_to_trash(&orig).await {
+                    Ok(new_trashed) => ok.push((orig, new_trashed)),
+                    Err(e) => {
+                        eprintln!("redo trash failed for {}: {e}", orig.display());
+                        failed += 1;
+                    }
+                }
+            }
+            (
+                (!ok.is_empty()).then_some(UndoOp::TrashDelete { pairs: ok }),
+                failed,
+            )
+        }
+        UndoOp::CopyIn { pairs } => {
+            let mut ok = Vec::new();
+            let mut failed = 0;
+            for (src, created) in pairs {
+                // tokio::fs::copy overwrites silently, so occupancy is
+                // pre-checked here just like move_no_overwrite does.
+                if tokio::fs::symlink_metadata(&created).await.is_ok() {
+                    eprintln!(
+                        "redo copy failed for {}: destination occupied",
+                        created.display()
+                    );
+                    failed += 1;
+                    continue;
+                }
+                match fm_core::ops::copy(&src, &created).await {
+                    Ok(()) => ok.push((src, created)),
+                    Err(e) => {
+                        eprintln!("redo copy failed for {}: {e}", src.display());
+                        failed += 1;
+                    }
+                }
+            }
+            (
+                (!ok.is_empty()).then_some(UndoOp::CopyIn { pairs: ok }),
+                failed,
+            )
+        }
+        UndoOp::CreateFolder { path } => {
+            // create_dir errors if anything already sits at path — the
+            // fail-safe check comes built in.
+            match tokio::fs::create_dir(&path).await {
+                Ok(()) => (Some(UndoOp::CreateFolder { path }), 0),
+                Err(e) => {
+                    eprintln!("redo create-folder failed for {}: {e}", path.display());
+                    (None, 1)
+                }
+            }
+        }
+        UndoOp::Restore { pairs } => {
+            let mut ok = Vec::new();
+            let mut failed = 0;
+            for (trashed, restored) in pairs {
+                if tokio::fs::symlink_metadata(&restored).await.is_ok() {
+                    eprintln!(
+                        "redo restore failed for {}: destination occupied",
+                        restored.display()
+                    );
+                    failed += 1;
+                    continue;
+                }
+                match fm_core::trash::restore(&trashed).await {
+                    // The trashed half is stale the moment restore consumes
+                    // it, but the undo record only needs `restored` (undo of
+                    // a restore = re-trash), and execute_undo's Restore arm
+                    // rebuilds fresh trashed paths when that happens.
+                    Ok(new_restored) => ok.push((trashed, new_restored)),
+                    Err(e) => {
+                        eprintln!("redo restore failed for {}: {e}", trashed.display());
+                        failed += 1;
+                    }
+                }
+            }
+            (
+                (!ok.is_empty()).then_some(UndoOp::Restore { pairs: ok }),
+                failed,
+            )
+        }
+    }
+}
+
 fn unique_paste_destination(dest_dir: &std::path::Path, name: &std::path::Path) -> PathBuf {
     let candidate = dest_dir.join(name);
     if !candidate.exists() {
