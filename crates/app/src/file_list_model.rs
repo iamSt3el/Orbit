@@ -281,6 +281,14 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "errorOccurred"]
         fn error_occurred(self: Pin<&mut FileListModel>, message: QString);
+
+        /// Emitted after every successful undoable operation ("Moved 3
+        /// items", canUndo: true — QML shows a snackbar with an Undo
+        /// action) and after an undo/redo completes ("Undid: Moved 3
+        /// items", canUndo: false — plain confirmation, no button).
+        #[qsignal]
+        #[cxx_name = "operationCompleted"]
+        fn operation_completed(self: Pin<&mut FileListModel>, description: QString, can_undo: bool);
     }
 
     unsafe extern "RustQt" {
@@ -772,12 +780,18 @@ impl qobject::FileListModel {
 
     fn create_folder(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
-        if let Err(e) =
-            runtime().block_on(fm_core::ops::create_folder(&current, &name.to_string()))
-        {
-            eprintln!("create_folder failed: {e}");
-            self.as_mut()
-                .error_occurred(QString::from(&format!("Couldn't create folder: {e}")));
+        match runtime().block_on(fm_core::ops::create_folder(&current, &name.to_string())) {
+            Ok(path) => {
+                let op = UndoOp::CreateFolder { path };
+                let desc = op.describe();
+                self.as_mut().rust_mut().journal.record(op);
+                self.as_mut().operation_completed(QString::from(&desc), true);
+            }
+            Err(e) => {
+                eprintln!("create_folder failed: {e}");
+                self.as_mut()
+                    .error_occurred(QString::from(&format!("Couldn't create folder: {e}")));
+            }
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -785,12 +799,23 @@ impl qobject::FileListModel {
     fn rename_entry(mut self: core::pin::Pin<&mut Self>, old_name: &QString, new_name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(old_name.to_string());
-        if let Err(e) = runtime().block_on(fm_core::ops::rename(&target, &new_name.to_string())) {
-            eprintln!("rename failed: {e}");
-            self.as_mut().error_occurred(QString::from(&format!(
-                "Couldn't rename \"{}\": {e}",
-                old_name.to_string()
-            )));
+        match runtime().block_on(fm_core::ops::rename(&target, &new_name.to_string())) {
+            Ok(new_path) => {
+                let op = UndoOp::Rename {
+                    from: target,
+                    to: new_path,
+                };
+                let desc = op.describe();
+                self.as_mut().rust_mut().journal.record(op);
+                self.as_mut().operation_completed(QString::from(&desc), true);
+            }
+            Err(e) => {
+                eprintln!("rename failed: {e}");
+                self.as_mut().error_occurred(QString::from(&format!(
+                    "Couldn't rename \"{}\": {e}",
+                    old_name.to_string()
+                )));
+            }
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -798,12 +823,22 @@ impl qobject::FileListModel {
     fn delete_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(name.to_string());
-        if let Err(e) = runtime().block_on(fm_core::trash::move_to_trash(&target)) {
-            eprintln!("delete_entry failed: {e}");
-            self.as_mut().error_occurred(QString::from(&format!(
-                "Couldn't delete \"{}\": {e}",
-                name.to_string()
-            )));
+        match runtime().block_on(fm_core::trash::move_to_trash(&target)) {
+            Ok(trashed) => {
+                let op = UndoOp::TrashDelete {
+                    pairs: vec![(target, trashed)],
+                };
+                let desc = op.describe();
+                self.as_mut().rust_mut().journal.record(op);
+                self.as_mut().operation_completed(QString::from(&desc), true);
+            }
+            Err(e) => {
+                eprintln!("delete_entry failed: {e}");
+                self.as_mut().error_occurred(QString::from(&format!(
+                    "Couldn't delete \"{}\": {e}",
+                    name.to_string()
+                )));
+            }
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -821,10 +856,14 @@ impl qobject::FileListModel {
         let qt_thread = self.qt_thread();
         runtime().spawn(async move {
             let mut failed: usize = 0;
+            let mut pairs: Vec<(PathBuf, PathBuf)> = Vec::new();
             for target in targets {
-                if let Err(e) = fm_core::trash::move_to_trash(&target).await {
-                    eprintln!("delete_selection failed for {}: {e}", target.display());
-                    failed += 1;
+                match fm_core::trash::move_to_trash(&target).await {
+                    Ok(trashed) => pairs.push((target, trashed)),
+                    Err(e) => {
+                        eprintln!("delete_selection failed for {}: {e}", target.display());
+                        failed += 1;
+                    }
                 }
             }
             let _ = qt_thread.queue(move |mut model| {
@@ -835,6 +874,12 @@ impl qobject::FileListModel {
                         "Couldn't delete {}",
                         pluralize_items(failed)
                     )));
+                }
+                if !pairs.is_empty() {
+                    let op = UndoOp::TrashDelete { pairs };
+                    let desc = op.describe();
+                    model.as_mut().rust_mut().journal.record(op);
+                    model.as_mut().operation_completed(QString::from(&desc), true);
                 }
             });
         });
@@ -950,12 +995,22 @@ impl qobject::FileListModel {
     fn duplicate_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(name.to_string());
-        if let Err(e) = runtime().block_on(fm_core::ops::duplicate(&target)) {
-            eprintln!("duplicate_entry failed: {e}");
-            self.as_mut().error_occurred(QString::from(&format!(
-                "Couldn't duplicate \"{}\": {e}",
-                name.to_string()
-            )));
+        match runtime().block_on(fm_core::ops::duplicate(&target)) {
+            Ok(created) => {
+                let op = UndoOp::CopyIn {
+                    pairs: vec![(target, created)],
+                };
+                let desc = op.describe();
+                self.as_mut().rust_mut().journal.record(op);
+                self.as_mut().operation_completed(QString::from(&desc), true);
+            }
+            Err(e) => {
+                eprintln!("duplicate_entry failed: {e}");
+                self.as_mut().error_occurred(QString::from(&format!(
+                    "Couldn't duplicate \"{}\": {e}",
+                    name.to_string()
+                )));
+            }
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -973,10 +1028,14 @@ impl qobject::FileListModel {
         let qt_thread = self.qt_thread();
         runtime().spawn(async move {
             let mut failed: usize = 0;
+            let mut pairs: Vec<(PathBuf, PathBuf)> = Vec::new();
             for target in targets {
-                if let Err(e) = fm_core::ops::duplicate(&target).await {
-                    eprintln!("duplicate_selection failed for {}: {e}", target.display());
-                    failed += 1;
+                match fm_core::ops::duplicate(&target).await {
+                    Ok(created) => pairs.push((target, created)),
+                    Err(e) => {
+                        eprintln!("duplicate_selection failed for {}: {e}", target.display());
+                        failed += 1;
+                    }
                 }
             }
             let _ = qt_thread.queue(move |mut model| {
@@ -988,6 +1047,12 @@ impl qobject::FileListModel {
                         pluralize_items(failed)
                     )));
                 }
+                if !pairs.is_empty() {
+                    let op = UndoOp::CopyIn { pairs };
+                    let desc = op.describe();
+                    model.as_mut().rust_mut().journal.record(op);
+                    model.as_mut().operation_completed(QString::from(&desc), true);
+                }
             });
         });
     }
@@ -995,12 +1060,22 @@ impl qobject::FileListModel {
     fn restore_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
         let target = current.join(name.to_string());
-        if let Err(e) = runtime().block_on(fm_core::trash::restore(&target)) {
-            eprintln!("restore_entry failed: {e}");
-            self.as_mut().error_occurred(QString::from(&format!(
-                "Couldn't restore \"{}\": {e}",
-                name.to_string()
-            )));
+        match runtime().block_on(fm_core::trash::restore(&target)) {
+            Ok(restored) => {
+                let op = UndoOp::Restore {
+                    pairs: vec![(target, restored)],
+                };
+                let desc = op.describe();
+                self.as_mut().rust_mut().journal.record(op);
+                self.as_mut().operation_completed(QString::from(&desc), true);
+            }
+            Err(e) => {
+                eprintln!("restore_entry failed: {e}");
+                self.as_mut().error_occurred(QString::from(&format!(
+                    "Couldn't restore \"{}\": {e}",
+                    name.to_string()
+                )));
+            }
         }
         self.as_mut().refresh_entries_diff();
     }
@@ -1018,10 +1093,14 @@ impl qobject::FileListModel {
         let qt_thread = self.qt_thread();
         runtime().spawn(async move {
             let mut failed: usize = 0;
+            let mut pairs: Vec<(PathBuf, PathBuf)> = Vec::new();
             for target in targets {
-                if let Err(e) = fm_core::trash::restore(&target).await {
-                    eprintln!("restore_selection failed for {}: {e}", target.display());
-                    failed += 1;
+                match fm_core::trash::restore(&target).await {
+                    Ok(restored) => pairs.push((target, restored)),
+                    Err(e) => {
+                        eprintln!("restore_selection failed for {}: {e}", target.display());
+                        failed += 1;
+                    }
                 }
             }
             let _ = qt_thread.queue(move |mut model| {
@@ -1032,6 +1111,12 @@ impl qobject::FileListModel {
                         "Couldn't restore {}",
                         pluralize_items(failed)
                     )));
+                }
+                if !pairs.is_empty() {
+                    let op = UndoOp::Restore { pairs };
+                    let desc = op.describe();
+                    model.as_mut().rust_mut().journal.record(op);
+                    model.as_mut().operation_completed(QString::from(&desc), true);
                 }
             });
         });
@@ -1215,6 +1300,7 @@ impl qobject::FileListModel {
 
         runtime().spawn(async move {
             let mut failed: usize = 0;
+            let mut succeeded: Vec<(PathBuf, PathBuf)> = Vec::new();
             for src in sources {
                 let Some(file_name) = src.file_name().map(|n| n.to_os_string()) else {
                     continue;
@@ -1237,9 +1323,12 @@ impl qobject::FileListModel {
                     )
                     .await
                 };
-                if let Err(e) = result {
-                    eprintln!("{verb} failed for {}: {e}", src.display());
-                    failed += 1;
+                match result {
+                    Ok(()) => succeeded.push((src, dest)),
+                    Err(e) => {
+                        eprintln!("{verb} failed for {}: {e}", src.display());
+                        failed += 1;
+                    }
                 }
             }
 
@@ -1253,6 +1342,16 @@ impl qobject::FileListModel {
                         "Couldn't {verb} {}",
                         pluralize_items(failed)
                     )));
+                }
+                if !succeeded.is_empty() {
+                    let op = if is_move {
+                        UndoOp::Move { pairs: succeeded }
+                    } else {
+                        UndoOp::CopyIn { pairs: succeeded }
+                    };
+                    let desc = op.describe();
+                    model.as_mut().rust_mut().journal.record(op);
+                    model.as_mut().operation_completed(QString::from(&desc), true);
                 }
             });
         });
