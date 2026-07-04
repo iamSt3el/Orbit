@@ -34,12 +34,16 @@ Item {
     Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
     Drag.proposedAction: Qt.MoveAction
     Drag.keys: ["text/uri-list", "application/x-filemanager-internal"]
-    Drag.onDragFinished: (dropAction) => { root.Drag.active = false }
+    Drag.onDragFinished: (dropAction) => {
+        root.Drag.active = false
+        root.Window.window._internalDragActive = false
+    }
 
     // grabToImage is asynchronous — Drag.active only flips on once the
     // snapshot is ready, so the OS drag always starts with a real preview
     // image instead of just a bare cursor.
     function _startDrag() {
+        root.Window.window._internalDragActive = true
         var names = root.selected ? root.fileModel.selectedNamesJoined().split("\n") : [root.name]
         var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n))
         root.Drag.mimeData = { "text/uri-list": uris.join("\r\n") }
@@ -244,6 +248,8 @@ Item {
         // drop.proposedAction — see the matching comment in
         // FileListItem.qml for why (some platforms don't reliably reflect
         // Drag.proposedAction: Qt.MoveAction back on the DragEvent).
+        // window._internalDragActive detects "this is our own drag", not
+        // drop.keys (same cross-platform reliability problem).
         DropArea {
             id: folderDropArea
             anchors.fill: parent
@@ -253,8 +259,7 @@ Item {
                 if (!drop.hasUrls) {
                     return
                 }
-                var isInternal = drop.keys.indexOf("application/x-filemanager-internal") !== -1
-                var isMove = isInternal || drop.proposedAction === Qt.MoveAction
+                var isMove = root.Window.window._internalDragActive || drop.proposedAction === Qt.MoveAction
                 drop.acceptProposedAction()
                 var paths = []
                 for (var i = 0; i < drop.urls.length; i++) {

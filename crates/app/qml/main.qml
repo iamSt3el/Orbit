@@ -16,6 +16,14 @@ Window {
     property string _pendingDeletePermanentlyName: ""
     property bool _pendingDeletePermanentlyIsSelection: false
 
+    // True for the duration of a drag started by this app's own
+    // FileListItem/FileGridItem (see their _startDrag()/Drag.onDragFinished).
+    // DragEvent.keys turned out not to reliably carry the source's Drag.keys
+    // across this platform's native drag-and-drop round-trip, so this plain
+    // app-local flag is what DropAreas actually use to tell an internal drag
+    // apart from a genuinely external one — not drop.keys.
+    property bool _internalDragActive: false
+
     // A same-named alias, not just "fileModel" — `fileModel` itself is an
     // id, not a property of Window, so `window.fileModel` doesn't exist
     // (silently evaluates to undefined). Any popup below that's created
@@ -500,19 +508,26 @@ Window {
                                 // Accepts drops landing on empty space (not on a
                                 // specific folder row, which FileListItem's own
                                 // DropArea already handles) — imports into the
-                                // current folder. Rejects our own internal drags
-                                // (dropping one of our own items back into the
-                                // folder it's already in is a no-op, not an
-                                // import); a genuinely external drop never
-                                // carries that key.
+                                // current folder. z: -1 keeps this behind the
+                                // delegates (see listBackgroundArea's matching
+                                // comment) so a drop landing on a folder row goes
+                                // to that row's own DropArea, not this one.
+                                // Rejects our own internal drags (dropping one of
+                                // our own items back into the folder it's already
+                                // in is a no-op, not an import) via
+                                // window._internalDragActive rather than
+                                // drop.keys, which doesn't reliably carry the
+                                // source's Drag.keys across this platform's
+                                // native drag-and-drop round-trip.
                                 DropArea {
+                                    z: -1
                                     anchors.fill: parent
                                     keys: ["text/uri-list"]
                                     onDropped: (drop) => {
                                         if (!drop.hasUrls) {
                                             return
                                         }
-                                        if (drop.keys.indexOf("application/x-filemanager-internal") !== -1) {
+                                        if (window._internalDragActive) {
                                             drop.accepted = false
                                             return
                                         }
@@ -674,13 +689,14 @@ Window {
 
                                 // See the matching comment on listView's DropArea.
                                 DropArea {
+                                    z: -1
                                     anchors.fill: parent
                                     keys: ["text/uri-list"]
                                     onDropped: (drop) => {
                                         if (!drop.hasUrls) {
                                             return
                                         }
-                                        if (drop.keys.indexOf("application/x-filemanager-internal") !== -1) {
+                                        if (window._internalDragActive) {
                                             drop.accepted = false
                                             return
                                         }

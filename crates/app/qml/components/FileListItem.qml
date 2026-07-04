@@ -34,18 +34,21 @@ Item {
     readonly property var fileModel: ListView.view ? ListView.view.model : null
 
     // Drag-and-drop: exported as real text/uri-list so external apps (a
-    // file browser, the desktop) can accept it too. The second key,
-    // "application/x-filemanager-internal", is QML-only routing — Drag.keys
-    // is never sent to other applications, only Drag.mimeData is — so
-    // main.qml's background DropArea can tell an internal drag apart from
-    // a genuinely external one and reject a meaningless drop-into-the-
-    // same-folder no-op.
+    // file browser, the desktop) can accept it too. Drag.keys is declared
+    // for completeness but DropAreas in this app do NOT rely on it to tell
+    // an internal drag apart from an external one — DragEvent.keys doesn't
+    // reliably carry the source's Drag.keys across this platform's native
+    // drag-and-drop round-trip. window._internalDragActive (set below) is
+    // the reliable signal instead.
     Drag.active: false
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
     Drag.proposedAction: Qt.MoveAction
     Drag.keys: ["text/uri-list", "application/x-filemanager-internal"]
-    Drag.onDragFinished: (dropAction) => { root.Drag.active = false }
+    Drag.onDragFinished: (dropAction) => {
+        root.Drag.active = false
+        root.Window.window._internalDragActive = false
+    }
 
     // Dragging a row that's already part of the selection drags the whole
     // selection; dragging an unselected row drags just that one item —
@@ -54,6 +57,7 @@ Item {
     // snapshot is ready, so the OS drag always starts with a real preview
     // image instead of just a bare cursor.
     function _startDrag() {
+        root.Window.window._internalDragActive = true
         var names = root.selected ? root.fileModel.selectedNamesJoined().split("\n") : [root.name]
         var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n))
         root.Drag.mimeData = { "text/uri-list": uris.join("\r\n") }
@@ -191,13 +195,14 @@ Item {
 
     // Folder rows are drop targets — accepts both our own internal drags
     // (moving an item into a subfolder) and an external file dropped
-    // precisely on this row. keys: ["text/uri-list"] deliberately omits
-    // our internal marker so both cases match. An internal drag is always
-    // a move regardless of drop.proposedAction — some platforms don't
-    // reliably reflect Drag.proposedAction: Qt.MoveAction back on the
-    // DragEvent, which silently turned every internal drag-to-move into a
-    // copy that left the original behind. Only a genuinely external drop
-    // (no internal key) defers to drop.proposedAction.
+    // precisely on this row. An internal drag is always a move regardless
+    // of drop.proposedAction — some platforms don't reliably reflect
+    // Drag.proposedAction: Qt.MoveAction back on the DragEvent, which
+    // silently turned every internal drag-to-move into a copy that left
+    // the original behind. window._internalDragActive (not drop.keys,
+    // which has the same cross-platform reliability problem) is what
+    // detects "this is our own drag"; a genuinely external drop defers to
+    // drop.proposedAction.
     DropArea {
         id: folderDropArea
         anchors.fill: parent
@@ -207,8 +212,7 @@ Item {
             if (!drop.hasUrls) {
                 return
             }
-            var isInternal = drop.keys.indexOf("application/x-filemanager-internal") !== -1
-            var isMove = isInternal || drop.proposedAction === Qt.MoveAction
+            var isMove = root.Window.window._internalDragActive || drop.proposedAction === Qt.MoveAction
             drop.acceptProposedAction()
             var paths = []
             for (var i = 0; i < drop.urls.length; i++) {
