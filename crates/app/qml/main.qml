@@ -172,6 +172,89 @@ Window {
         onActivated: fileModel.selectAll()
     }
 
+    // True while any popup/dialog/menu Loader is active — every shortcut
+    // below no-ops while this is true, so e.g. Delete can't act on the
+    // background selection while Properties or a context menu is showing
+    // on top of it. Checked here (rather than in each Loader individually)
+    // so there's one place to update if a new popup is added later.
+    readonly property bool anyPopupOpen:
+        contextMenuLoader.active || newFolderDialogLoader.active ||
+        viewOptionsMenuLoader.active || itemContextMenuLoader.active ||
+        renameDialogLoader.active || propertiesDialogLoader.active ||
+        deleteConfirmDialogLoader.active || trashContextMenuLoader.active ||
+        emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active
+
+    Shortcut {
+        sequence: StandardKey.Delete
+        onActivated: {
+            if (window.anyPopupOpen) return
+            if (fileModel.selectedCount() > 0) {
+                fileModel.deleteSelection()
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: "F2"
+        onActivated: {
+            if (window.anyPopupOpen) return
+            if (fileModel.selectedCount() === 1) {
+                window.openRenameDialog(fileModel.singleSelectedName())
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: StandardKey.Copy
+        onActivated: {
+            if (window.anyPopupOpen) return
+            fileModel.copySelection()
+        }
+    }
+
+    Shortcut {
+        sequence: StandardKey.Cut
+        onActivated: {
+            if (window.anyPopupOpen) return
+            fileModel.cutSelection()
+        }
+    }
+
+    Shortcut {
+        sequence: StandardKey.Paste
+        onActivated: {
+            if (window.anyPopupOpen) return
+            fileModel.pasteEntry()
+        }
+    }
+
+    Shortcut {
+        sequences: ["Return", "Enter"]
+        onActivated: {
+            if (window.anyPopupOpen) return
+            fileModel.openSelectedEntry()
+        }
+    }
+
+    Shortcut {
+        sequences: ["Backspace", "Alt+Left"]
+        onActivated: {
+            if (window.anyPopupOpen) return
+            if (fileModel.currentPath !== "/") {
+                fileModel.navigate(window.parentPath(fileModel.currentPath))
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: StandardKey.Cancel
+        onActivated: {
+            if (!window.anyPopupOpen) {
+                fileModel.clearSelection()
+            }
+        }
+    }
+
     // Layout modeled on the user's quickshell "Nebula" settings app: a
     // single unified card (surfaceContainer) holding the sidebar and
     // content side by side with no gap between them — the sidebar's own
