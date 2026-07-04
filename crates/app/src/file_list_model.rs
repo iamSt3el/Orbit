@@ -115,6 +115,24 @@ pub mod qobject {
 
     unsafe extern "RustQt" {
         #[qinvokable]
+        #[cxx_name = "setSelected"]
+        fn set_selected(self: Pin<&mut FileListModel>, name: &QString, selected: bool);
+
+        #[qinvokable]
+        #[cxx_name = "selectAll"]
+        fn select_all(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "clearSelection"]
+        fn clear_selection(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "selectedCount"]
+        fn selected_count(self: &FileListModel) -> i32;
+    }
+
+    unsafe extern "RustQt" {
+        #[qinvokable]
         #[cxx_name = "createFolder"]
         fn create_folder(self: Pin<&mut FileListModel>, name: &QString);
 
@@ -298,6 +316,11 @@ pub struct FileListModelRust {
     transfer_speed_label: QString,
     clipboard_path: Option<PathBuf>,
     clipboard_is_cut: bool,
+    /// Names currently selected in the view (Ctrl/Shift/drag-select) —
+    /// scoped to the current folder's listing. Cleared on navigate() and
+    /// pruned automatically in apply_entries_diff() whenever a selected
+    /// name disappears from the listing.
+    selected: std::collections::HashSet<String>,
     /// Source paths currently being thumbnailed on a background task —
     /// guards against re-spawning a duplicate task for the same entry if a
     /// delegate re-requests it (e.g. scrolling it out and back into view)
@@ -349,6 +372,7 @@ impl Default for FileListModelRust {
             transfer_speed_label: QString::from(""),
             clipboard_path: None,
             clipboard_is_cut: false,
+            selected: std::collections::HashSet::new(),
             pending_thumbnails: std::collections::HashSet::new(),
         }
     }
@@ -362,6 +386,7 @@ const MODIFIED_ROLE: i32 = 0x0104;
 const MIME_TYPE_ROLE: i32 = 0x0105;
 const PERMISSIONS_ROLE: i32 = 0x0106;
 const THUMBNAIL_PATH_ROLE: i32 = 0x0107;
+const SELECTED_ROLE: i32 = 0x0108;
 
 fn format_modified(modified: std::time::SystemTime) -> String {
     use time::format_description::well_known::Iso8601;
@@ -453,6 +478,7 @@ impl qobject::FileListModel {
                     .map(|p| format!("file://{}", p.display()))
                     .unwrap_or_default(),
             )),
+            SELECTED_ROLE => QVariant::from(&self.selected.contains(&entry.name)),
             _ => QVariant::default(),
         }
     }
@@ -467,7 +493,73 @@ impl qobject::FileListModel {
         roles.insert(MIME_TYPE_ROLE, QByteArray::from("mimeType"));
         roles.insert(PERMISSIONS_ROLE, QByteArray::from("permissions"));
         roles.insert(THUMBNAIL_PATH_ROLE, QByteArray::from("thumbnailPath"));
+        roles.insert(SELECTED_ROLE, QByteArray::from("selected"));
         roles
+    }
+
+    /// Emits `dataChanged` for the single row matching `name`, if it's
+    /// currently visible under the active search/hidden-file filter — used
+    /// by `set_selected` so toggling one row's selection doesn't touch any
+    /// other row's bindings.
+    fn notify_row_for_name(mut self: core::pin::Pin<&mut Self>, name: &str) {
+        let Some(idx) = self.entries.iter().position(|e| e.name == name) else {
+            return;
+        };
+        let matching = matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden);
+        let Some(row) = matching.iter().position(|&i| i == idx) else {
+            return;
+        };
+        let parent = cxx_qt_lib::QModelIndex::default();
+        let model_index = self.model_index(row as i32, 0, &parent);
+        self.as_mut()
+            .data_changed(&model_index, &model_index, &cxx_qt_lib::QList::<i32>::default());
+    }
+
+    fn set_selected(mut self: core::pin::Pin<&mut Self>, name: &QString, selected: bool) {
+        let name = name.to_string();
+        let changed = if selected {
+            self.as_mut().rust_mut().selected.insert(name.clone())
+        } else {
+            self.as_mut().rust_mut().selected.remove(&name)
+        };
+        if changed {
+            self.as_mut().notify_row_for_name(&name);
+        }
+    }
+
+    fn select_all(mut self: core::pin::Pin<&mut Self>) {
+        let matching = matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden);
+        let names: std::collections::HashSet<String> =
+            matching.iter().map(|&i| self.entries[i].name.clone()).collect();
+        self.as_mut().rust_mut().selected = names;
+        if matching.is_empty() {
+            return;
+        }
+        let parent = cxx_qt_lib::QModelIndex::default();
+        let first = self.model_index(0, 0, &parent);
+        let last = self.model_index((matching.len() - 1) as i32, 0, &parent);
+        self.as_mut()
+            .data_changed(&first, &last, &cxx_qt_lib::QList::<i32>::default());
+    }
+
+    fn clear_selection(mut self: core::pin::Pin<&mut Self>) {
+        if self.selected.is_empty() {
+            return;
+        }
+        let row_count = self.row_count(&cxx_qt_lib::QModelIndex::default());
+        self.as_mut().rust_mut().selected.clear();
+        if row_count == 0 {
+            return;
+        }
+        let parent = cxx_qt_lib::QModelIndex::default();
+        let first = self.model_index(0, 0, &parent);
+        let last = self.model_index(row_count - 1, 0, &parent);
+        self.as_mut()
+            .data_changed(&first, &last, &cxx_qt_lib::QList::<i32>::default());
+    }
+
+    fn selected_count(&self) -> i32 {
+        self.selected.len() as i32
     }
 
     fn navigate(mut self: core::pin::Pin<&mut Self>, path: &QString) {
@@ -481,9 +573,10 @@ impl qobject::FileListModel {
 
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().entries = entries;
-        // A search filter from the previous directory shouldn't silently
-        // carry over and hide entries in the new one.
+        // A search filter (and a selection) from the previous directory
+        // shouldn't silently carry over into the new one.
         self.as_mut().rust_mut().search_query = QString::from("");
+        self.as_mut().rust_mut().selected.clear();
         self.as_mut().end_reset_model();
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
@@ -576,6 +669,15 @@ impl qobject::FileListModel {
         fn same_entry(a: &fm_core::FileEntry, b: &fm_core::FileEntry) -> bool {
             a.name == b.name && a.is_dir == b.is_dir
         }
+
+        // A selected name that no longer exists in the fresh listing (it
+        // was deleted, renamed, or moved elsewhere) can't stay selected.
+        let new_names: std::collections::HashSet<String> =
+            new_entries.iter().map(|e| e.name.clone()).collect();
+        self.as_mut()
+            .rust_mut()
+            .selected
+            .retain(|name| new_names.contains(name));
 
         if !self.search_query.to_string().is_empty() || !self.show_hidden {
             // The row-level diff below assumes model rows map 1:1 onto
