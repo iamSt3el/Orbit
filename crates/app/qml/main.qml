@@ -13,6 +13,8 @@ Window {
 
     property string _pendingDeleteName: ""
     property bool _pendingDeleteIsSelection: false
+    property string _pendingDeletePermanentlyName: ""
+    property bool _pendingDeletePermanentlyIsSelection: false
 
     // A same-named alias, not just "fileModel" — `fileModel` itself is an
     // id, not a property of Window, so `window.fileModel` doesn't exist
@@ -107,7 +109,7 @@ Window {
 
     function openItemContextMenu(x, y, name, isDir, size, modified, mimeType, permissions) {
         itemContextMenuLoader.active = true
-        itemContextMenuLoader.item.popup(x, y, name, isDir, size, modified, mimeType, permissions, fileModel.selectedCount())
+        itemContextMenuLoader.item.popup(x, y, name, isDir, size, modified, mimeType, permissions, fileModel.selectedCount(), fileModel.currentPath === fileModel.trashPath)
     }
 
     function openRenameDialog(name) {
@@ -131,6 +133,19 @@ Window {
         window._pendingDeleteIsSelection = true
         deleteConfirmDialogLoader.active = true
         deleteConfirmDialogLoader.item.open("Move " + count + " items to Trash?")
+    }
+
+    function openDeletePermanentlyConfirmDialog(name) {
+        window._pendingDeletePermanentlyName = name
+        window._pendingDeletePermanentlyIsSelection = false
+        deletePermanentlyConfirmDialogLoader.active = true
+        deletePermanentlyConfirmDialogLoader.item.open("Permanently delete \"" + name + "\"? This can't be undone.")
+    }
+
+    function openDeletePermanentlySelectionConfirmDialog(count) {
+        window._pendingDeletePermanentlyIsSelection = true
+        deletePermanentlyConfirmDialogLoader.active = true
+        deletePermanentlyConfirmDialogLoader.item.open("Permanently delete " + count + " items? This can't be undone.")
     }
 
     function openTrashContextMenu(x, y) {
@@ -182,7 +197,8 @@ Window {
         viewOptionsMenuLoader.active || itemContextMenuLoader.active ||
         renameDialogLoader.active || propertiesDialogLoader.active ||
         deleteConfirmDialogLoader.active || trashContextMenuLoader.active ||
-        emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active
+        emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active ||
+        deletePermanentlyConfirmDialogLoader.active
 
     Shortcut {
         sequence: StandardKey.Delete
@@ -743,6 +759,20 @@ Window {
                     window.openDeleteConfirmDialog(name)
                 }
             }
+            onRestoreRequested: (name) => {
+                if (itemContextMenu.selectionCount > 1) {
+                    fileModel.restoreSelection()
+                } else {
+                    fileModel.restoreEntry(name)
+                }
+            }
+            onDeletePermanentlyRequested: (name) => {
+                if (itemContextMenu.selectionCount > 1) {
+                    window.openDeletePermanentlySelectionConfirmDialog(itemContextMenu.selectionCount)
+                } else {
+                    window.openDeletePermanentlyConfirmDialog(name)
+                }
+            }
             onPropertiesRequested: (name, isDir, size, modified, mimeType, permissions) =>
                 window.openPropertiesDialog(name, isDir, size, modified, mimeType, permissions)
             onClosed: Qt.callLater(() => itemContextMenuLoader.active = false)
@@ -784,6 +814,24 @@ Window {
                 }
             }
             onClosed: Qt.callLater(() => deleteConfirmDialogLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: deletePermanentlyConfirmDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: ConfirmDialog {
+            title: "Delete Permanently"
+            confirmLabel: "Delete Permanently"
+            onConfirmed: {
+                if (window._pendingDeletePermanentlyIsSelection) {
+                    fileModel.deletePermanentlySelection()
+                } else {
+                    fileModel.deletePermanentlyEntry(window._pendingDeletePermanentlyName)
+                }
+            }
+            onClosed: Qt.callLater(() => deletePermanentlyConfirmDialogLoader.active = false)
         }
     }
 
