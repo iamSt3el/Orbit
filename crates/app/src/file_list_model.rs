@@ -234,6 +234,15 @@ pub mod qobject {
     }
 
     unsafe extern "RustQt" {
+        /// Emitted whenever a user-triggered file operation fails, carrying
+        /// a short user-facing message. QML listens via
+        /// `Connections { target: fileModel; function onErrorOccurred(message) { ... } }`.
+        #[qsignal]
+        #[cxx_name = "errorOccurred"]
+        fn error_occurred(self: Pin<&mut FileListModel>, message: QString);
+    }
+
+    unsafe extern "RustQt" {
         #[qinvokable]
         #[cxx_name = "entryAbsolutePath"]
         fn entry_absolute_path(self: &FileListModel, name: &QString) -> QString;
@@ -1312,6 +1321,16 @@ fn resolve_range_names(displayed: &[&fm_core::FileEntry], from_name: &str, to_na
     displayed[start..=end].iter().map(|e| e.name.clone()).collect()
 }
 
+/// "1 item" vs "N items" — used to summarize a batch operation's failure
+/// count instead of listing every individual failure.
+fn pluralize_items(count: usize) -> String {
+    if count == 1 {
+        "1 item".to_string()
+    } else {
+        format!("{count} items")
+    }
+}
+
 #[cfg(test)]
 mod selection_range_tests {
     use super::*;
@@ -1362,5 +1381,25 @@ mod selection_range_tests {
         let refs: Vec<&fm_core::FileEntry> = entries.iter().collect();
         assert!(resolve_range_names(&refs, "a", "missing").is_empty());
         assert!(resolve_range_names(&refs, "missing", "a").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod pluralize_items_tests {
+    use super::*;
+
+    #[test]
+    fn pluralizes_a_single_item() {
+        assert_eq!(pluralize_items(1), "1 item");
+    }
+
+    #[test]
+    fn pluralizes_multiple_items() {
+        assert_eq!(pluralize_items(3), "3 items");
+    }
+
+    #[test]
+    fn pluralizes_zero_as_plural() {
+        assert_eq!(pluralize_items(0), "0 items");
     }
 }
