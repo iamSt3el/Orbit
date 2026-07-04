@@ -28,6 +28,21 @@ Item {
 
     readonly property var fileModel: GridView.view ? GridView.view.model : null
 
+    // See FileListItem.qml's matching properties/function for why.
+    Drag.active: false
+    Drag.dragType: Drag.Automatic
+    Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+    Drag.proposedAction: Qt.MoveAction
+    Drag.keys: ["text/uri-list", "application/x-filemanager-internal"]
+    Drag.onDragFinished: (dropAction) => { root.Drag.active = false }
+
+    function _startDrag() {
+        var names = root.selected ? root.fileModel.selectedNamesJoined().split("\n") : [root.name]
+        var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n))
+        root.Drag.mimeData = { "text/uri-list": uris.join("\r\n") }
+        root.Drag.active = true
+    }
+
     width: GridView.view ? GridView.view.cellWidth : 0
     height: GridView.view ? GridView.view.cellHeight : 0
 
@@ -93,6 +108,16 @@ Item {
                     Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                 }
 
+                Rectangle {
+                    // See FileListItem.qml's matching highlight for why
+                    // this exists alongside the hover-highlight above.
+                    anchors.fill: parent
+                    radius: Shape.medium
+                    color: Qt.alpha(Color.scheme.primary, 0.12)
+                    opacity: folderDropArea.containsDrag ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                }
+
                 Icon {
                     anchors.centerIn: parent
                     content: Format.iconForKey(root.iconKey, root.isDir)
@@ -147,7 +172,35 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+            property real _pressX: 0
+            property real _pressY: 0
+            property bool _dragging: false
+
+            onPressed: (mouse) => {
+                cellArea._pressX = mouse.x
+                cellArea._pressY = mouse.y
+                cellArea._dragging = false
+            }
+            onPositionChanged: (mouse) => {
+                if (!cellArea.pressed || cellArea._dragging || !(cellArea.pressedButtons & Qt.LeftButton)) {
+                    return
+                }
+                var dx = mouse.x - cellArea._pressX
+                var dy = mouse.y - cellArea._pressY
+                if (Math.sqrt(dx * dx + dy * dy) < 6) {
+                    return
+                }
+                cellArea._dragging = true
+                root._startDrag()
+            }
+            onReleased: {
+                cellArea._dragging = false
+            }
             onClicked: (mouse) => {
+                if (cellArea._dragging) {
+                    return
+                }
                 if (mouse.button === Qt.RightButton) {
                     if (!root.selected) {
                         root.fileModel.clearSelection()
@@ -178,6 +231,26 @@ Item {
                 } else {
                     root.fileModel.openEntry(root.name)
                 }
+            }
+        }
+
+        DropArea {
+            id: folderDropArea
+            anchors.fill: parent
+            enabled: root.isDir
+            keys: ["text/uri-list"]
+            onDropped: (drop) => {
+                if (!drop.hasUrls) {
+                    return
+                }
+                var isMove = drop.proposedAction === Qt.MoveAction
+                drop.acceptProposedAction()
+                var paths = []
+                for (var i = 0; i < drop.urls.length; i++) {
+                    paths.push(drop.urls[i].toString().replace("file://", ""))
+                }
+                var destDir = root.fileModel.currentPath + "/" + root.name
+                root.fileModel.dropPaths(paths.join("\n"), destDir, isMove)
             }
         }
     }

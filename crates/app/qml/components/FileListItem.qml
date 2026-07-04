@@ -33,6 +33,30 @@ Item {
     // property — more reliable across delegate recycling.
     readonly property var fileModel: ListView.view ? ListView.view.model : null
 
+    // Drag-and-drop: exported as real text/uri-list so external apps (a
+    // file browser, the desktop) can accept it too. The second key,
+    // "application/x-filemanager-internal", is QML-only routing — Drag.keys
+    // is never sent to other applications, only Drag.mimeData is — so
+    // main.qml's background DropArea can tell an internal drag apart from
+    // a genuinely external one and reject a meaningless drop-into-the-
+    // same-folder no-op.
+    Drag.active: false
+    Drag.dragType: Drag.Automatic
+    Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+    Drag.proposedAction: Qt.MoveAction
+    Drag.keys: ["text/uri-list", "application/x-filemanager-internal"]
+    Drag.onDragFinished: (dropAction) => { root.Drag.active = false }
+
+    // Dragging a row that's already part of the selection drags the whole
+    // selection; dragging an unselected row drags just that one item —
+    // mirrors the existing right-click rule in rowArea.onClicked below.
+    function _startDrag() {
+        var names = root.selected ? root.fileModel.selectedNamesJoined().split("\n") : [root.name]
+        var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n))
+        root.Drag.mimeData = { "text/uri-list": uris.join("\r\n") }
+        root.Drag.active = true
+    }
+
     width: ListView.view ? ListView.view.width : 0
     height: 60
 
@@ -92,7 +116,35 @@ Item {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+        property real _pressX: 0
+        property real _pressY: 0
+        property bool _dragging: false
+
+        onPressed: (mouse) => {
+            rowArea._pressX = mouse.x
+            rowArea._pressY = mouse.y
+            rowArea._dragging = false
+        }
+        onPositionChanged: (mouse) => {
+            if (!rowArea.pressed || rowArea._dragging || !(rowArea.pressedButtons & Qt.LeftButton)) {
+                return
+            }
+            var dx = mouse.x - rowArea._pressX
+            var dy = mouse.y - rowArea._pressY
+            if (Math.sqrt(dx * dx + dy * dy) < 6) {
+                return
+            }
+            rowArea._dragging = true
+            root._startDrag()
+        }
+        onReleased: {
+            rowArea._dragging = false
+        }
         onClicked: (mouse) => {
+            if (rowArea._dragging) {
+                return
+            }
             if (mouse.button === Qt.RightButton) {
                 // Right-clicking an item already part of the selection
                 // keeps the whole selection (so the menu can act on all of
@@ -131,6 +183,31 @@ Item {
         }
     }
 
+    // Folder rows are drop targets — accepts both our own internal drags
+    // (moving an item into a subfolder) and an external file dropped
+    // precisely on this row. keys: ["text/uri-list"] deliberately omits
+    // our internal marker so both cases match; the drop-action rule
+    // (isMove from drop.proposedAction) is identical either way.
+    DropArea {
+        id: folderDropArea
+        anchors.fill: parent
+        enabled: root.isDir
+        keys: ["text/uri-list"]
+        onDropped: (drop) => {
+            if (!drop.hasUrls) {
+                return
+            }
+            var isMove = drop.proposedAction === Qt.MoveAction
+            drop.acceptProposedAction()
+            var paths = []
+            for (var i = 0; i < drop.urls.length; i++) {
+                paths.push(drop.urls[i].toString().replace("file://", ""))
+            }
+            var destDir = root.fileModel.currentPath + "/" + root.name
+            root.fileModel.dropPaths(paths.join("\n"), destDir, isMove)
+        }
+    }
+
     Row {
         anchors.fill: parent
         anchors.leftMargin: 20
@@ -151,6 +228,16 @@ Item {
                 radius: Shape.medium
                 color: Qt.alpha(Color.scheme.primary, 0.12)
                 opacity: (root.isDir && rowArea.containsMouse) ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+            }
+
+            Rectangle {
+                // Same tonal highlight as the hover case above, but for a
+                // drag hovering over this folder mid-drop.
+                anchors.fill: parent
+                radius: Shape.medium
+                color: Qt.alpha(Color.scheme.primary, 0.12)
+                opacity: folderDropArea.containsDrag ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
             }
 
