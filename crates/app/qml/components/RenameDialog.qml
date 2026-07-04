@@ -7,6 +7,9 @@ Item {
     id: root
 
     signal accepted(string oldName, string newName)
+    // See ContextMenu.qml — lets the Loader wrapping this component tear
+    // the instance down once it hides.
+    signal closed
 
     anchors.fill: parent
     visible: false
@@ -24,11 +27,12 @@ Item {
 
     function close() {
         visible = false
+        root.closed()
     }
 
     Rectangle {
         anchors.fill: parent
-        color: Color.scheme.inverseSurface
+        color: Color.scheme.surface
         opacity: 0.4
 
         MouseArea {

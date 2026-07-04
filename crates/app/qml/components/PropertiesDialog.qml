@@ -1,15 +1,25 @@
 import QtQuick
+import QtQuick.Layouts
 import "../util/format.js" as Format
 import com.filemanager.app 1.0
 
-// A minimal custom modal dialog showing an entry's details.
+// A minimal custom modal dialog showing an entry's details. The facts are
+// one continuous "grouped card" (see GroupCard.qml) — modeled on the
+// user's quickshell "Nebula" settings screen — rather than separately
+// rounded/gapped cards: only the first row has top corners, only the last
+// has bottom corners, and the rows in between are nearly flat top and
+// bottom so the whole group reads as one card.
 Item {
     id: root
 
     property var fileModel
     property string entryName: ""
     property bool entryIsDir: false
-    property int entrySize: 0
+    // real, not int — QML's int is 32-bit and silently truncates any file
+    // over ~2.1GB; the model exposes size as a 64-bit value and real (a
+    // JS double) can represent that exactly. This was why Properties
+    // showed a wrong (or missing) size for larger files.
+    property real entrySize: 0
     property string entryModified: ""
     property string entryMimeType: ""
     property string entryPermissions: ""
@@ -17,6 +27,10 @@ Item {
     anchors.fill: parent
     visible: false
     z: 2000
+
+    // See ContextMenu.qml — lets the Loader wrapping this component tear
+    // the instance down once it hides.
+    signal closed
 
     function open(name, isDir, size, modified, mimeType, permissions) {
         root.entryName = name
@@ -30,11 +44,39 @@ Item {
 
     function close() {
         visible = false
+        root.closed()
     }
+
+    readonly property var _facts: [
+        {
+            icon: "category",
+            label: "Type",
+            value: root.entryIsDir ? "Folder" : root.entryMimeType
+        },
+        {
+            icon: "storage",
+            label: "Size",
+            value: root.entryIsDir
+                ? (root.fileModel
+                    ? Format.formatBytes(root.fileModel.folderSize(root.entryName)) + " (" + Format.formatItemCount(root.fileModel.folderItemCount(root.entryName)) + ")"
+                    : "—")
+                : Format.formatBytes(root.entrySize)
+        },
+        {
+            icon: "lock",
+            label: "Permissions",
+            value: root.entryPermissions
+        },
+        {
+            icon: "schedule",
+            label: "Modified",
+            value: Format.formatModified(root.entryModified)
+        }
+    ]
 
     Rectangle {
         anchors.fill: parent
-        color: Color.scheme.inverseSurface
+        color: Color.scheme.surface
         opacity: 0.4
 
         MouseArea {
@@ -49,7 +91,7 @@ Item {
     }
 
     Rectangle {
-        width: 360
+        width: Math.min(400, root.width - 40)
         height: _content.implicitHeight + 40
         radius: Shape.extraLarge
         color: Elevation.surfaceAt(3)
@@ -85,52 +127,54 @@ Item {
                 }
             }
 
-            Rectangle {
+            // One continuous grouped card — only the group's outer edges
+            // are rounded; the rows in between are nearly flat, matching
+            // GroupCard.qml (and the Nebula settings screen it's modeled
+            // on) rather than each fact being its own separately-rounded,
+            // gapped card.
+            Column {
                 width: parent.width
-                height: _infoColumn.implicitHeight + 16
-                radius: Shape.medium
-                color: Color.scheme.surfaceContainerHigh
+                spacing: 3
 
-                Column {
-                    id: _infoColumn
-                    anchors.fill: parent
-                    anchors.margins: 8
+                Repeater {
+                    model: root._facts
 
-                    Repeater {
-                        model: [
-                            { label: "Type", value: root.entryIsDir ? "Folder" : root.entryMimeType },
-                            { label: "Size", value: root.entryIsDir
-                                ? (root.fileModel
-                                    ? Format.formatBytes(root.fileModel.folderSize(root.entryName)) + " (" + Format.formatItemCount(root.fileModel.folderItemCount(root.entryName)) + ")"
-                                    : "—")
-                                : Format.formatBytes(root.entrySize) },
-                            { label: "Permissions", value: root.entryPermissions },
-                            { label: "Modified", value: Format.formatModified(root.entryModified) }
-                        ]
+                    delegate: GroupCard {
+                        required property var modelData
+                        required property int index
+                        isFirst: index === 0
+                        isLast: index === root._facts.length - 1
 
-                        delegate: Row {
-                            required property var modelData
-                            width: _infoColumn.width
-                            height: 36
-                            spacing: 8
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 12
 
-                            Text {
-                                text: modelData.label
+                            Icon {
+                                content: modelData.icon
+                                iconSize: 20
                                 color: Color.scheme.surfaceVariantText
-                                font.family: Type.bodyMedium.family
-                                font.pixelSize: Type.bodyMedium.size
-                                width: 92
-                                anchors.verticalCenter: parent.verticalCenter
                             }
 
-                            Text {
-                                text: modelData.value
-                                color: Color.scheme.surfaceText
-                                font.family: Type.bodyMedium.family
-                                font.pixelSize: Type.bodyMedium.size
-                                elide: Text.ElideRight
-                                width: parent.width - 100
-                                anchors.verticalCenter: parent.verticalCenter
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+
+                                Text {
+                                    text: modelData.label
+                                    color: Color.scheme.surfaceVariantText
+                                    font.family: Type.labelMedium.family
+                                    font.weight: Type.labelMedium.weight
+                                    font.pixelSize: Type.labelMedium.size
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.value
+                                    color: Color.scheme.surfaceText
+                                    font.family: Type.bodyLarge.family
+                                    font.pixelSize: Type.bodyLarge.size
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
                     }

@@ -12,6 +12,10 @@ Item {
     signal newFolderRequested
     signal openTerminalRequested
     signal pasteRequested
+    // Emitted whenever this menu hides, whether from an outside click, an
+    // action selection, or Escape — the Loader wrapping this component in
+    // main.qml uses this to tear the instance down again.
+    signal closed
 
     anchors.fill: parent
     visible: false
@@ -42,6 +46,7 @@ Item {
 
     function close() {
         visible = false
+        root.closed()
     }
 
     MouseArea {

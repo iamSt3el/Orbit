@@ -126,6 +126,14 @@ pub mod qobject {
         #[cxx_name = "deleteEntry"]
         fn delete_entry(self: Pin<&mut FileListModel>, name: &QString);
 
+        /// Permanently removes everything in the freedesktop Trash (files
+        /// and their .trashinfo sidecars) — not a move-to-trash, so this
+        /// one has no recovery path. Refreshes the listing afterward when
+        /// currently browsing the Trash folder itself.
+        #[qinvokable]
+        #[cxx_name = "emptyTrash"]
+        fn empty_trash(self: Pin<&mut FileListModel>);
+
         #[qinvokable]
         #[cxx_name = "openEntry"]
         fn open_entry(self: Pin<&mut FileListModel>, name: &QString);
@@ -537,6 +545,15 @@ impl qobject::FileListModel {
             eprintln!("delete_entry failed: {e}");
         }
         self.as_mut().refresh_entries_diff();
+    }
+
+    fn empty_trash(mut self: core::pin::Pin<&mut Self>) {
+        if let Err(e) = runtime().block_on(fm_core::trash::empty_trash()) {
+            eprintln!("empty_trash failed: {e}");
+        }
+        if self.current_path.to_string() == self.trash_path.to_string() {
+            self.as_mut().refresh_entries_diff();
+        }
     }
 
     /// Re-lists the current directory and reconciles the model against the

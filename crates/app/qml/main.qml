@@ -13,6 +13,19 @@ Window {
 
     property string _pendingDeleteName: ""
 
+    // A same-named alias, not just "fileModel" — `fileModel` itself is an
+    // id, not a property of Window, so `window.fileModel` doesn't exist
+    // (silently evaluates to undefined). Any popup below that's created
+    // via a Loader's sourceComponent AND declares its own `property var
+    // fileModel` needs this alias (`window.fileListModel`) instead of the
+    // bare `fileModel` id — the bare id resolves to that popup's own
+    // not-yet-set property once it's instantiated from inside a Loader's
+    // Component boundary, not the outer FileListModel, leaving it null.
+    // (Confirmed: the un-Loader'd, statically-nested version of these
+    // same popups did not have this problem — it's specific to crossing
+    // a Loader/Component boundary.)
+    property alias fileListModel: fileModel
+
     // viewMode and iconSizeLevel live on fileModel (persisted to
     // settings.json) rather than as plain window properties, so they
     // survive a restart — see FileListModel.saveSettings().
@@ -62,6 +75,64 @@ Window {
         wheel.accepted = true
     }
 
+    // Popup helpers — every dialog/menu at the bottom of this file lives
+    // behind a Loader that stays inactive (no instance, no cost) until one
+    // of these is called, and tears itself back down again via each
+    // component's `closed` signal. Callers throughout this file go through
+    // these instead of touching a menu/dialog id directly, since that id
+    // now only resolves to something real once its Loader is active.
+    function openContextMenu(x, y) {
+        contextMenuLoader.active = true
+        contextMenuLoader.item.canPaste = fileModel.canPaste()
+        contextMenuLoader.item.popup(x, y)
+    }
+
+    function openNewFolderDialog() {
+        newFolderDialogLoader.active = true
+        newFolderDialogLoader.item.open()
+    }
+
+    function openViewOptionsMenu(x, y) {
+        viewOptionsMenuLoader.active = true
+        viewOptionsMenuLoader.item.popup(x, y)
+    }
+
+    function openItemContextMenu(x, y, name, isDir, size, modified, mimeType, permissions) {
+        itemContextMenuLoader.active = true
+        itemContextMenuLoader.item.popup(x, y, name, isDir, size, modified, mimeType, permissions)
+    }
+
+    function openRenameDialog(name) {
+        renameDialogLoader.active = true
+        renameDialogLoader.item.open(name)
+    }
+
+    function openPropertiesDialog(name, isDir, size, modified, mimeType, permissions) {
+        propertiesDialogLoader.active = true
+        propertiesDialogLoader.item.open(name, isDir, size, modified, mimeType, permissions)
+    }
+
+    function openDeleteConfirmDialog(name) {
+        window._pendingDeleteName = name
+        deleteConfirmDialogLoader.active = true
+        deleteConfirmDialogLoader.item.open("Move \"" + name + "\" to Trash?")
+    }
+
+    function openTrashContextMenu(x, y) {
+        trashContextMenuLoader.active = true
+        trashContextMenuLoader.item.popup(x, y)
+    }
+
+    function openEmptyTrashConfirmDialog() {
+        emptyTrashConfirmDialogLoader.active = true
+        emptyTrashConfirmDialogLoader.item.open("Permanently delete everything in Trash? This can't be undone.")
+    }
+
+    function openSettingsDialog() {
+        settingsDialogLoader.active = true
+        settingsDialogLoader.item.open()
+    }
+
     // Invisible helper for "Copy Path" — TextEdit.copy() writes the current
     // selection straight to the system clipboard, no extra module needed.
     TextEdit {
@@ -108,7 +179,8 @@ Window {
                     Layout.preferredWidth: 200
                     fileModel: fileModel
                     currentPath: fileModel.currentPath ? fileModel.currentPath : ""
-                    onSettingsRequested: settingsDialog.open()
+                    onSettingsRequested: window.openSettingsDialog()
+                    onTrashContextMenuRequested: (x, y) => window.openTrashContextMenu(x, y)
                 }
 
                 ColumnLayout {
@@ -140,7 +212,7 @@ Window {
                             fileModel.viewMode = "grid"
                             fileModel.saveSettings()
                         }
-                        onOptionsRequested: (x, y) => viewOptionsMenu.popup(x, y)
+                        onOptionsRequested: (x, y) => window.openViewOptionsMenu(x, y)
                     }
 
                     Item {
@@ -166,7 +238,7 @@ Window {
                                     iconSize: window.activeIconProfile.listIcon
                                     iconContainerSize: window.activeIconProfile.listContainer
                                     onContextMenuRequested: (x, y) =>
-                                        itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
+                                        window.openItemContextMenu(x, y, name, isDir, size, modified, mimeType, permissions)
                                 }
 
                                 MouseArea {
@@ -182,8 +254,7 @@ Window {
                                     onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
                                     onClicked: (mouse) => {
                                         var scenePos = listBackgroundArea.mapToItem(null, mouse.x, mouse.y)
-                                        contextMenu.canPaste = fileModel.canPaste()
-                                        contextMenu.popup(scenePos.x, scenePos.y)
+                                        window.openContextMenu(scenePos.x, scenePos.y)
                                     }
                                 }
 
@@ -227,7 +298,7 @@ Window {
                                     iconSize: window.activeIconProfile.gridIcon
                                     iconContainerSize: window.activeIconProfile.gridContainer
                                     onContextMenuRequested: (x, y) =>
-                                        itemContextMenu.popup(x, y, name, isDir, size, modified, mimeType, permissions)
+                                        window.openItemContextMenu(x, y, name, isDir, size, modified, mimeType, permissions)
                                 }
 
                                 MouseArea {
@@ -241,8 +312,7 @@ Window {
                                     onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
                                     onClicked: (mouse) => {
                                         var scenePos = gridBackgroundArea.mapToItem(null, mouse.x, mouse.y)
-                                        contextMenu.canPaste = fileModel.canPaste()
-                                        contextMenu.popup(scenePos.x, scenePos.y)
+                                        window.openContextMenu(scenePos.x, scenePos.y)
                                     }
                                 }
 
@@ -268,69 +338,133 @@ Window {
 
     // Menus and dialogs are anchored to the whole Window, not just
     // contentArea — their dimmed backdrop needs to cover the top bar and
-    // sidebar too, not stop at the file listing's edge.
-    ContextMenu {
-        id: contextMenu
-        onNewFolderRequested: newFolderDialog.open()
-        onOpenTerminalRequested: fileModel.openTerminalHere()
-        onPasteRequested: fileModel.pasteEntry()
-    }
-
-    NewFolderDialog {
-        id: newFolderDialog
-        onAccepted: (name) => fileModel.createFolder(name)
-    }
-
-    ViewOptionsMenu {
-        id: viewOptionsMenu
-        fileModel: fileModel
-        onIconSizeSelected: (level) => {
-            fileModel.iconSizeLevel = level
-            fileModel.saveSettings()
+    // sidebar too, not stop at the file listing's edge. Each lives behind
+    // a Loader that's inactive (no instance at all) until one of the
+    // window.openX() helpers above activates it, and deactivates itself
+    // again via its `closed` signal — so the ~10 popups this app can show
+    // cost nothing at startup or while none of them are open.
+    Loader {
+        id: contextMenuLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: ContextMenu {
+            onNewFolderRequested: window.openNewFolderDialog()
+            onOpenTerminalRequested: fileModel.openTerminalHere()
+            onPasteRequested: fileModel.pasteEntry()
+            onClosed: Qt.callLater(() => contextMenuLoader.active = false)
         }
     }
 
-    ItemContextMenu {
-        id: itemContextMenu
-        onOpenRequested: (name) => {
-            if (itemContextMenu.entryIsDir) {
-                fileModel.navigate(fileModel.currentPath + "/" + name)
-            } else {
-                fileModel.openEntry(name)
+    Loader {
+        id: newFolderDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: NewFolderDialog {
+            onAccepted: (name) => fileModel.createFolder(name)
+            onClosed: Qt.callLater(() => newFolderDialogLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: viewOptionsMenuLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: ViewOptionsMenu {
+            fileModel: window.fileListModel
+            onIconSizeSelected: (level) => {
+                fileModel.iconSizeLevel = level
+                fileModel.saveSettings()
             }
+            onClosed: Qt.callLater(() => viewOptionsMenuLoader.active = false)
         }
-        onRenameRequested: (name) => renameDialog.open(name)
-        onDuplicateRequested: (name) => fileModel.duplicateEntry(name)
-        onCopyPathRequested: (name) => clipboardHelper.copyText(fileModel.entryAbsolutePath(name))
-        onCopyRequested: (name) => fileModel.copyEntry(name)
-        onCutRequested: (name) => fileModel.cutEntry(name)
-        onDeleteRequested: (name) => {
-            window._pendingDeleteName = name
-            deleteConfirmDialog.open("Move \"" + name + "\" to Trash?")
+    }
+
+    Loader {
+        id: itemContextMenuLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: ItemContextMenu {
+            id: itemContextMenu
+            onOpenRequested: (name) => {
+                if (itemContextMenu.entryIsDir) {
+                    fileModel.navigate(fileModel.currentPath + "/" + name)
+                } else {
+                    fileModel.openEntry(name)
+                }
+            }
+            onRenameRequested: (name) => window.openRenameDialog(name)
+            onDuplicateRequested: (name) => fileModel.duplicateEntry(name)
+            onCopyPathRequested: (name) => clipboardHelper.copyText(fileModel.entryAbsolutePath(name))
+            onCopyRequested: (name) => fileModel.copyEntry(name)
+            onCutRequested: (name) => fileModel.cutEntry(name)
+            onDeleteRequested: (name) => window.openDeleteConfirmDialog(name)
+            onPropertiesRequested: (name, isDir, size, modified, mimeType, permissions) =>
+                window.openPropertiesDialog(name, isDir, size, modified, mimeType, permissions)
+            onClosed: Qt.callLater(() => itemContextMenuLoader.active = false)
         }
-        onPropertiesRequested: (name, isDir, size, modified, mimeType, permissions) =>
-            propertiesDialog.open(name, isDir, size, modified, mimeType, permissions)
     }
 
-    RenameDialog {
-        id: renameDialog
-        onAccepted: (oldName, newName) => fileModel.renameEntry(oldName, newName)
+    Loader {
+        id: renameDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: RenameDialog {
+            onAccepted: (oldName, newName) => fileModel.renameEntry(oldName, newName)
+            onClosed: Qt.callLater(() => renameDialogLoader.active = false)
+        }
     }
 
-    PropertiesDialog {
-        id: propertiesDialog
-        fileModel: fileModel
+    Loader {
+        id: propertiesDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: PropertiesDialog {
+            fileModel: window.fileListModel
+            onClosed: Qt.callLater(() => propertiesDialogLoader.active = false)
+        }
     }
 
-    ConfirmDialog {
-        id: deleteConfirmDialog
-        title: "Move to Trash"
-        confirmLabel: "Delete"
-        onConfirmed: fileModel.deleteEntry(window._pendingDeleteName)
+    Loader {
+        id: deleteConfirmDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: ConfirmDialog {
+            title: "Move to Trash"
+            confirmLabel: "Delete"
+            onConfirmed: fileModel.deleteEntry(window._pendingDeleteName)
+            onClosed: Qt.callLater(() => deleteConfirmDialogLoader.active = false)
+        }
     }
 
-    SettingsDialog {
-        id: settingsDialog
-        fileModel: fileModel
+    Loader {
+        id: trashContextMenuLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: TrashContextMenu {
+            onEmptyTrashRequested: window.openEmptyTrashConfirmDialog()
+            onClosed: Qt.callLater(() => trashContextMenuLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: emptyTrashConfirmDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: ConfirmDialog {
+            title: "Empty Trash"
+            confirmLabel: "Empty Trash"
+            onConfirmed: fileModel.emptyTrash()
+            onClosed: Qt.callLater(() => emptyTrashConfirmDialogLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: settingsDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: SettingsDialog {
+            fileModel: window.fileListModel
+            onClosed: Qt.callLater(() => settingsDialogLoader.active = false)
+        }
     }
 }

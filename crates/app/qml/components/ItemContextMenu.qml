@@ -9,7 +9,8 @@ Item {
 
     property string entryName: ""
     property bool entryIsDir: false
-    property int entrySize: 0
+    // real, not int — see FileListItem.qml's `size` role for why.
+    property real entrySize: 0
     property string entryModified: ""
     property string entryMimeType: ""
     property string entryPermissions: ""
@@ -21,7 +22,10 @@ Item {
     signal copyRequested(string name)
     signal cutRequested(string name)
     signal deleteRequested(string name)
-    signal propertiesRequested(string name, bool isDir, int size, string modified, string mimeType, string permissions)
+    signal propertiesRequested(string name, bool isDir, real size, string modified, string mimeType, string permissions)
+    // See ContextMenu.qml — lets the Loader wrapping this component tear
+    // the instance down once it hides.
+    signal closed
 
     anchors.fill: parent
     visible: false
@@ -52,6 +56,7 @@ Item {
 
     function close() {
         visible = false
+        root.closed()
     }
 
     MouseArea {

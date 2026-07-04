@@ -12,6 +12,7 @@ Rectangle {
     property var fileModel
     property string currentPath: ""
     signal settingsRequested
+    signal trashContextMenuRequested(real x, real y)
 
     width: 200
     radius: Shape.largeIncreased
@@ -21,7 +22,7 @@ Rectangle {
         { label: "Home", icon: "home", path: fileModel ? fileModel.homePath : "" },
         { label: "Downloads", icon: "download", path: fileModel ? fileModel.downloadsPath : "" },
         { label: "Documents", icon: "description", path: fileModel ? fileModel.documentsPath : "" },
-        { label: "Trash", icon: "delete", path: fileModel ? fileModel.trashPath : "" }
+        { label: "Trash", icon: "delete", path: fileModel ? fileModel.trashPath : "", isTrash: true }
     ]
 
     Column {
@@ -154,7 +155,15 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                if (navItem.modelData.isTrash) {
+                                    var scenePos = navItem.mapToItem(null, mouse.x, mouse.y)
+                                    root.trashContextMenuRequested(scenePos.x, scenePos.y)
+                                }
+                                return
+                            }
                             if (navItem.modelData.path.length > 0 && root.fileModel) {
                                 root.fileModel.navigate(navItem.modelData.path)
                             }

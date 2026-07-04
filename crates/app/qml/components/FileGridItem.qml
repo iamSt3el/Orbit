@@ -7,7 +7,10 @@ Item {
 
     required property string name
     required property bool isDir
-    required property int size
+    // real, not int — QML's int is 32-bit and silently truncates any file
+    // over ~2.1GB; the model exposes size as a 64-bit value and real (a
+    // JS double) can represent that exactly.
+    required property real size
     required property string iconKey
     required property string modified
     required property string mimeType

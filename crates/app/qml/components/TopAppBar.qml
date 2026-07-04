@@ -75,10 +75,23 @@ Item {
         PathBar {
             id: pathBar
             Layout.preferredHeight: 40
-            // Fixed-width pill in both states, never stretched to fill the
-            // header. Search is roughly half the width of the plain path
-            // display.
-            Layout.preferredWidth: pathBar.searching ? 220 : 420
+            // Proportional to the header's own width (clamped so it never
+            // gets uselessly tiny on a narrow window or absurdly wide on an
+            // ultrawide one), not a fixed pixel size — the M3 adaptive-layout
+            // principle applied to this one control instead of a full
+            // window-size-class system, since that's all this bar needs.
+            // Search is roughly half the width of the plain path display.
+            // Spring-animated per M3 Expressive motion — a resize this
+            // visible reads as a snap without it.
+            Layout.preferredWidth: pathBar.searching
+                ? Math.max(220, Math.min(480, root.width * 0.34))
+                : Math.max(320, Math.min(900, root.width * 0.68))
+            Behavior on Layout.preferredWidth {
+                SpringAnimation {
+                    spring: Motion.springStandard.spring
+                    damping: Motion.springStandard.damping
+                }
+            }
             path: root.title
             fileModel: root.fileModel
         }

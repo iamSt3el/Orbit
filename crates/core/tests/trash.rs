@@ -51,3 +51,28 @@ async fn dedupes_name_collisions_in_trash() {
     );
     assert_eq!(fs::read_to_string(&trashed_second).unwrap(), "two");
 }
+
+#[tokio::test]
+async fn empty_trash_removes_files_and_info_entries() {
+    let data_home = tempdir().unwrap();
+    let source_dir = tempdir().unwrap();
+    let file_path = source_dir.path().join("doomed.txt");
+    fs::write(&file_path, b"bye").unwrap();
+
+    trash::move_to_trash_in(&file_path, data_home.path())
+        .await
+        .unwrap();
+
+    trash::empty_trash_in(data_home.path()).await.unwrap();
+
+    let files_dir = data_home.path().join("Trash").join("files");
+    let info_dir = data_home.path().join("Trash").join("info");
+    assert_eq!(fs::read_dir(&files_dir).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(&info_dir).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn empty_trash_is_a_noop_when_trash_does_not_exist() {
+    let data_home = tempdir().unwrap();
+    trash::empty_trash_in(data_home.path()).await.unwrap();
+}

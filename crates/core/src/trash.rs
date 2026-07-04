@@ -37,6 +37,37 @@ pub async fn move_to_trash_in(path: &Path, data_home: &Path) -> io::Result<PathB
     Ok(trashed_path)
 }
 
+pub async fn empty_trash() -> io::Result<()> {
+    let data_home = dirs::data_dir()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "XDG data dir not found"))?;
+    empty_trash_in(&data_home).await
+}
+
+pub async fn empty_trash_in(data_home: &Path) -> io::Result<()> {
+    let files_dir = data_home.join("Trash").join("files");
+    let info_dir = data_home.join("Trash").join("info");
+    remove_dir_contents(&files_dir).await?;
+    remove_dir_contents(&info_dir).await?;
+    Ok(())
+}
+
+async fn remove_dir_contents(dir: &Path) -> io::Result<()> {
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if entry.metadata().await?.is_dir() {
+            tokio::fs::remove_dir_all(&path).await?;
+        } else {
+            tokio::fs::remove_file(&path).await?;
+        }
+    }
+    Ok(())
+}
+
 fn unique_trash_name(files_dir: &Path, original_name: &str) -> String {
     let path = Path::new(original_name);
     let stem = path

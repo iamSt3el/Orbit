@@ -14,6 +14,9 @@ Item {
     property string iconSizeLevel: "medium" // "small" | "medium" | "large"
 
     signal iconSizeSelected(string level)
+    // See ContextMenu.qml — lets the Loader wrapping this component tear
+    // the instance down once it hides.
+    signal closed
 
     anchors.fill: parent
     visible: false
@@ -46,6 +49,7 @@ Item {
 
     function close() {
         visible = false
+        root.closed()
     }
 
     MouseArea {
