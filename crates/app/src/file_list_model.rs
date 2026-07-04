@@ -140,6 +140,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "selectedCount"]
         fn selected_count(self: &FileListModel) -> i32;
+
+        #[qinvokable]
+        #[cxx_name = "singleSelectedName"]
+        fn single_selected_name(self: &FileListModel) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "openSelectedEntry"]
+        fn open_selected_entry(self: Pin<&mut FileListModel>);
     }
 
     unsafe extern "RustQt" {
@@ -644,6 +652,31 @@ impl qobject::FileListModel {
 
     fn selected_count(&self) -> i32 {
         self.selected.len() as i32
+    }
+
+    fn single_selected_name(&self) -> QString {
+        if self.selected.len() == 1 {
+            QString::from(self.selected.iter().next().unwrap())
+        } else {
+            QString::from("")
+        }
+    }
+
+    fn open_selected_entry(mut self: core::pin::Pin<&mut Self>) {
+        if self.selected.len() != 1 {
+            return;
+        }
+        let name = self.selected.iter().next().unwrap().clone();
+        let Some(entry) = self.entries.iter().find(|e| e.name == name) else {
+            return;
+        };
+        if entry.is_dir {
+            let path = QString::from(&format!("{}/{}", self.current_path.to_string(), name));
+            self.as_mut().navigate(&path);
+        } else {
+            let name_q = QString::from(&name);
+            self.as_mut().open_entry(&name_q);
+        }
     }
 
     fn navigate(mut self: core::pin::Pin<&mut Self>, path: &QString) {
