@@ -176,6 +176,17 @@ pub mod qobject {
         #[cxx_name = "cutEntry"]
         fn cut_entry(self: Pin<&mut FileListModel>, name: &QString);
 
+        /// Snapshots every currently-selected name into the clipboard, for
+        /// pasting elsewhere — the multi-item counterpart to copyEntry.
+        #[qinvokable]
+        #[cxx_name = "copySelection"]
+        fn copy_selection(self: Pin<&mut FileListModel>);
+
+        /// Multi-item counterpart to cutEntry.
+        #[qinvokable]
+        #[cxx_name = "cutSelection"]
+        fn cut_selection(self: Pin<&mut FileListModel>);
+
         #[qinvokable]
         #[cxx_name = "canPaste"]
         fn can_paste(self: &FileListModel) -> bool;
@@ -318,7 +329,7 @@ pub struct FileListModelRust {
     transfer_done_bytes: i64,
     transfer_total_bytes: i64,
     transfer_speed_label: QString,
-    clipboard_path: Option<PathBuf>,
+    clipboard_paths: Vec<PathBuf>,
     clipboard_is_cut: bool,
     /// Names currently selected in the view (Ctrl/Shift/drag-select) —
     /// scoped to the current folder's listing. Cleared on navigate() and
@@ -374,7 +385,7 @@ impl Default for FileListModelRust {
             transfer_done_bytes: 0,
             transfer_total_bytes: 0,
             transfer_speed_label: QString::from(""),
-            clipboard_path: None,
+            clipboard_paths: Vec::new(),
             clipboard_is_cut: false,
             selected: std::collections::HashSet::new(),
             pending_thumbnails: std::collections::HashSet::new(),
@@ -782,36 +793,47 @@ impl qobject::FileListModel {
 
     fn copy_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
-        self.as_mut().rust_mut().clipboard_path = Some(current.join(name.to_string()));
+        self.as_mut().rust_mut().clipboard_paths = vec![current.join(name.to_string())];
         self.as_mut().rust_mut().clipboard_is_cut = false;
     }
 
     fn cut_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
-        self.as_mut().rust_mut().clipboard_path = Some(current.join(name.to_string()));
+        self.as_mut().rust_mut().clipboard_paths = vec![current.join(name.to_string())];
+        self.as_mut().rust_mut().clipboard_is_cut = true;
+    }
+
+    fn copy_selection(mut self: core::pin::Pin<&mut Self>) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let paths: Vec<PathBuf> = self.selected.iter().map(|name| current.join(name)).collect();
+        self.as_mut().rust_mut().clipboard_paths = paths;
+        self.as_mut().rust_mut().clipboard_is_cut = false;
+    }
+
+    fn cut_selection(mut self: core::pin::Pin<&mut Self>) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let paths: Vec<PathBuf> = self.selected.iter().map(|name| current.join(name)).collect();
+        self.as_mut().rust_mut().clipboard_paths = paths;
         self.as_mut().rust_mut().clipboard_is_cut = true;
     }
 
     fn can_paste(&self) -> bool {
-        self.clipboard_path.is_some()
+        !self.clipboard_paths.is_empty()
     }
 
     fn paste_entry(mut self: core::pin::Pin<&mut Self>) {
-        let Some(src) = self.clipboard_path.clone() else {
+        let sources = self.clipboard_paths.clone();
+        if sources.is_empty() {
             return;
-        };
+        }
         let is_cut = self.clipboard_is_cut;
         let dest_dir = PathBuf::from(self.current_path.to_string());
-        let Some(file_name) = src.file_name() else {
-            return;
-        };
-        let dest = unique_paste_destination(&dest_dir, std::path::Path::new(file_name));
 
-        // Computed synchronously, up front — cheap relative to the actual
-        // copy, and needed immediately so the "done / total" display has a
-        // real denominator from the very first frame instead of starting
-        // at "0 B / 0 B".
-        let total = fm_core::ops::path_size(&src);
+        // Computed synchronously, up front — one combined denominator for
+        // the whole batch (cheap relative to the actual copy), so the
+        // "done / total" display starts with a real number even for a
+        // multi-item paste.
+        let total: u64 = sources.iter().map(|src| fm_core::ops::path_size(src)).sum();
 
         self.as_mut().set_is_busy(true);
         self.as_mut().set_busy_label(QString::from(if is_cut {
@@ -823,20 +845,21 @@ impl qobject::FileListModel {
         self.as_mut().set_transfer_total_bytes(total as i64);
         self.as_mut().set_transfer_speed_label(QString::from(""));
 
-        // A cut clears itself from the clipboard after pasting once; a
-        // copy can be pasted repeatedly, matching every other file
-        // manager's clipboard behavior.
+        // A cut clears the whole clipboard after pasting once; a copy can
+        // be pasted repeatedly — same rule as the single-item version this
+        // replaces, just applied to the whole batch.
         if is_cut {
-            self.as_mut().rust_mut().clipboard_path = None;
+            self.as_mut().rust_mut().clipboard_paths = Vec::new();
         }
 
+        // Shared across every item in the batch and never reset between
+        // them — copy_with_progress/move_entry_with_progress only ever
+        // fetch_add onto `done`, so reusing the same counter across
+        // sequential items gives one continuous running total for the
+        // whole batch instead of restarting at 0 per item.
         let done_counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel::<u64>();
 
-        // Progress relay: reads every update off the channel but only
-        // forwards a throttled subset to the Qt thread, so a fast local
-        // copy doesn't flood qt_thread.queue() with dozens of calls per
-        // second for updates the UI couldn't render anyway.
         let qt_thread = self.qt_thread();
         let progress_qt_thread = qt_thread.clone();
         runtime().spawn(async move {
@@ -862,16 +885,38 @@ impl qobject::FileListModel {
         });
 
         runtime().spawn(async move {
-            let result = if is_cut {
-                fm_core::ops::move_entry_with_progress(&src, &dest, done_counter, progress_tx)
+            let mut last_error = None;
+            for src in sources {
+                let Some(file_name) = src.file_name().map(|n| n.to_os_string()) else {
+                    continue;
+                };
+                let dest = unique_paste_destination(&dest_dir, std::path::Path::new(&file_name));
+                let result = if is_cut {
+                    fm_core::ops::move_entry_with_progress(
+                        &src,
+                        &dest,
+                        done_counter.clone(),
+                        progress_tx.clone(),
+                    )
                     .await
-            } else {
-                fm_core::ops::copy_with_progress(src.clone(), dest.clone(), done_counter, progress_tx)
+                } else {
+                    fm_core::ops::copy_with_progress(
+                        src.clone(),
+                        dest.clone(),
+                        done_counter.clone(),
+                        progress_tx.clone(),
+                    )
                     .await
-            };
-            let _ = qt_thread.queue(move |mut model| {
+                };
                 if let Err(e) = result {
-                    eprintln!("paste_entry failed: {e}");
+                    eprintln!("paste_entry failed for {}: {e}", src.display());
+                    last_error = Some(e);
+                }
+            }
+
+            let _ = qt_thread.queue(move |mut model| {
+                if let Some(e) = last_error {
+                    eprintln!("paste_entry: at least one item in the batch failed: {e}");
                 }
                 model.as_mut().set_is_busy(false);
                 model.as_mut().set_transfer_done_bytes(0);
