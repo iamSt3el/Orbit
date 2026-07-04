@@ -50,11 +50,17 @@ Item {
     // Dragging a row that's already part of the selection drags the whole
     // selection; dragging an unselected row drags just that one item —
     // mirrors the existing right-click rule in rowArea.onClicked below.
+    // grabToImage is asynchronous — Drag.active only flips on once the
+    // snapshot is ready, so the OS drag always starts with a real preview
+    // image instead of just a bare cursor.
     function _startDrag() {
         var names = root.selected ? root.fileModel.selectedNamesJoined().split("\n") : [root.name]
         var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n))
         root.Drag.mimeData = { "text/uri-list": uris.join("\r\n") }
-        root.Drag.active = true
+        root.grabToImage((result) => {
+            root.Drag.imageSource = result.url
+            root.Drag.active = true
+        })
     }
 
     width: ListView.view ? ListView.view.width : 0
@@ -186,8 +192,12 @@ Item {
     // Folder rows are drop targets — accepts both our own internal drags
     // (moving an item into a subfolder) and an external file dropped
     // precisely on this row. keys: ["text/uri-list"] deliberately omits
-    // our internal marker so both cases match; the drop-action rule
-    // (isMove from drop.proposedAction) is identical either way.
+    // our internal marker so both cases match. An internal drag is always
+    // a move regardless of drop.proposedAction — some platforms don't
+    // reliably reflect Drag.proposedAction: Qt.MoveAction back on the
+    // DragEvent, which silently turned every internal drag-to-move into a
+    // copy that left the original behind. Only a genuinely external drop
+    // (no internal key) defers to drop.proposedAction.
     DropArea {
         id: folderDropArea
         anchors.fill: parent
@@ -197,7 +207,8 @@ Item {
             if (!drop.hasUrls) {
                 return
             }
-            var isMove = drop.proposedAction === Qt.MoveAction
+            var isInternal = drop.keys.indexOf("application/x-filemanager-internal") !== -1
+            var isMove = isInternal || drop.proposedAction === Qt.MoveAction
             drop.acceptProposedAction()
             var paths = []
             for (var i = 0; i < drop.urls.length; i++) {
