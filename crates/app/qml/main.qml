@@ -357,11 +357,12 @@ Window {
                                             if (child.name === undefined) {
                                                 continue
                                             }
-                                            // Full containment, not mere overlap — a row
-                                            // just grazed by the selector's edge shouldn't
-                                            // get selected, only ones entirely inside it.
-                                            var contained = child.x >= rectLeft && (child.x + child.width) <= rectRight &&
-                                                            child.y >= rectTop && (child.y + child.height) <= rectBottom
+                                            // Any overlap counts — a row touched by the
+                                            // selector's edge is selected, and the
+                                            // sweptNames bookkeeping below un-selects it
+                                            // again the moment it's no longer touched.
+                                            var contained = child.x < rectRight && (child.x + child.width) > rectLeft &&
+                                                            child.y < rectBottom && (child.y + child.height) > rectTop
                                             if (contained && !listBackgroundArea.sweptNames[child.name]) {
                                                 listBackgroundArea.sweptNames[child.name] = true
                                                 fileModel.setSelected(child.name, true)
@@ -502,11 +503,12 @@ Window {
                                             if (child.name === undefined) {
                                                 continue
                                             }
-                                            // Full containment, not mere overlap — a cell
-                                            // just grazed by the selector's edge shouldn't
-                                            // get selected, only ones entirely inside it.
-                                            var contained = child.x >= rectLeft && (child.x + child.width) <= rectRight &&
-                                                            child.y >= rectTop && (child.y + child.height) <= rectBottom
+                                            // Any overlap counts — a cell touched by the
+                                            // selector's edge is selected, and the
+                                            // sweptNames bookkeeping below un-selects it
+                                            // again the moment it's no longer touched.
+                                            var contained = child.x < rectRight && (child.x + child.width) > rectLeft &&
+                                                            child.y < rectBottom && (child.y + child.height) > rectTop
                                             if (contained && !gridBackgroundArea.sweptNames[child.name]) {
                                                 gridBackgroundArea.sweptNames[child.name] = true
                                                 fileModel.setSelected(child.name, true)
