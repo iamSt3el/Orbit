@@ -114,14 +114,17 @@ Item {
                 // view's cached thumbnail, which may not exist yet if this
                 // entry was never scrolled into view) since entryAbsolutePath
                 // is already exposed for this and Image handles its own
-                // async decode.
-                Item {
-                    visible: root._isImage
+                // async decode. Behind a Loader, not a plain Item — most
+                // Properties opens are for folders/non-image files, where
+                // this whole Rectangle+Image+Icon subtree (and the decoded
+                // texture behind it) would otherwise exist for nothing.
+                Loader {
                     width: parent.width
                     height: 160
+                    active: root._isImage
+                    visible: active
 
-                    Rectangle {
-                        anchors.fill: parent
+                    sourceComponent: Rectangle {
                         radius: Shape.medium
                         color: Elevation.surfaceAt(1)
                         clip: true
@@ -131,7 +134,7 @@ Item {
                             anchors.fill: parent
                             anchors.margins: 4
                             visible: status === Image.Ready
-                            source: root._isImage && root.fileModel
+                            source: root.fileModel
                                 ? "file://" + root.fileModel.entryAbsolutePath(root.entryName)
                                 : ""
                             fillMode: Image.PreserveAspectFit
