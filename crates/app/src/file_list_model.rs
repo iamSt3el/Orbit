@@ -119,6 +119,10 @@ pub mod qobject {
         fn set_selected(self: Pin<&mut FileListModel>, name: &QString, selected: bool);
 
         #[qinvokable]
+        #[cxx_name = "selectRange"]
+        fn select_range(self: Pin<&mut FileListModel>, from_name: &QString, to_name: &QString);
+
+        #[qinvokable]
         #[cxx_name = "selectAll"]
         fn select_all(self: Pin<&mut FileListModel>);
 
@@ -525,6 +529,25 @@ impl qobject::FileListModel {
         if changed {
             self.as_mut().notify_row_for_name(&name);
         }
+    }
+
+    fn select_range(mut self: core::pin::Pin<&mut Self>, from_name: &QString, to_name: &QString) {
+        let matching = matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden);
+        let displayed: Vec<&fm_core::FileEntry> = matching.iter().map(|&i| &self.entries[i]).collect();
+        let names = resolve_range_names(&displayed, &from_name.to_string(), &to_name.to_string());
+        if names.is_empty() {
+            return;
+        }
+        self.as_mut().rust_mut().selected.extend(names);
+
+        if matching.is_empty() {
+            return;
+        }
+        let parent = cxx_qt_lib::QModelIndex::default();
+        let first = self.model_index(0, 0, &parent);
+        let last = self.model_index((matching.len() - 1) as i32, 0, &parent);
+        self.as_mut()
+            .data_changed(&first, &last, &cxx_qt_lib::QList::<i32>::default());
     }
 
     fn select_all(mut self: core::pin::Pin<&mut Self>) {
@@ -1087,4 +1110,78 @@ fn dir_size(path: &std::path::Path) -> u64 {
             Err(_) => 0,
         })
         .sum()
+}
+
+/// Names of every entry between `from_name` and `to_name` inclusive, in
+/// `displayed`'s order (the order the user actually sees, i.e. an
+/// already-filtered/sorted slice — not raw `entries`, which may contain
+/// hidden/filtered-out names the user never clicked between). Works
+/// regardless of which of the two names comes first. Returns an empty Vec
+/// if either name isn't found in `displayed`.
+fn resolve_range_names(displayed: &[&fm_core::FileEntry], from_name: &str, to_name: &str) -> Vec<String> {
+    let Some(from_idx) = displayed.iter().position(|e| e.name == from_name) else {
+        return Vec::new();
+    };
+    let Some(to_idx) = displayed.iter().position(|e| e.name == to_name) else {
+        return Vec::new();
+    };
+    let (start, end) = if from_idx <= to_idx {
+        (from_idx, to_idx)
+    } else {
+        (to_idx, from_idx)
+    };
+    displayed[start..=end].iter().map(|e| e.name.clone()).collect()
+}
+
+#[cfg(test)]
+mod selection_range_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::SystemTime;
+
+    fn entry(name: &str) -> fm_core::FileEntry {
+        fm_core::FileEntry {
+            name: name.to_string(),
+            path: PathBuf::from(name),
+            is_dir: false,
+            size: 0,
+            modified: SystemTime::UNIX_EPOCH,
+            mime_type: "text/plain".to_string(),
+            icon_key: "text".to_string(),
+            permissions: "rw-r--r--".to_string(),
+            thumbnail_path: None,
+        }
+    }
+
+    #[test]
+    fn resolves_a_forward_range_inclusive() {
+        let entries = vec![entry("a"), entry("b"), entry("c"), entry("d")];
+        let refs: Vec<&fm_core::FileEntry> = entries.iter().collect();
+        let names = resolve_range_names(&refs, "b", "d");
+        assert_eq!(names, vec!["b".to_string(), "c".to_string(), "d".to_string()]);
+    }
+
+    #[test]
+    fn resolves_a_reversed_range_the_same_way() {
+        let entries = vec![entry("a"), entry("b"), entry("c"), entry("d")];
+        let refs: Vec<&fm_core::FileEntry> = entries.iter().collect();
+        let names = resolve_range_names(&refs, "d", "b");
+        assert_eq!(names, vec!["b".to_string(), "c".to_string(), "d".to_string()]);
+    }
+
+    #[test]
+    fn a_range_from_a_name_to_itself_is_just_that_one_name() {
+        let entries = vec![entry("a"), entry("b")];
+        let refs: Vec<&fm_core::FileEntry> = entries.iter().collect();
+        let names = resolve_range_names(&refs, "a", "a");
+        assert_eq!(names, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn an_unknown_name_resolves_to_an_empty_range() {
+        let entries = vec![entry("a"), entry("b")];
+        let refs: Vec<&fm_core::FileEntry> = entries.iter().collect();
+        assert!(resolve_range_names(&refs, "a", "missing").is_empty());
+        assert!(resolve_range_names(&refs, "missing", "a").is_empty());
+    }
 }
