@@ -196,6 +196,26 @@ pub mod qobject {
         fn duplicate_selection(self: Pin<&mut FileListModel>);
 
         #[qinvokable]
+        #[cxx_name = "restoreEntry"]
+        fn restore_entry(self: Pin<&mut FileListModel>, name: &QString);
+
+        /// Multi-item counterpart to restoreEntry — same background-task
+        /// pattern as deleteSelection.
+        #[qinvokable]
+        #[cxx_name = "restoreSelection"]
+        fn restore_selection(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "deletePermanentlyEntry"]
+        fn delete_permanently_entry(self: Pin<&mut FileListModel>, name: &QString);
+
+        /// Multi-item counterpart to deletePermanentlyEntry — same
+        /// background-task pattern as deleteSelection.
+        #[qinvokable]
+        #[cxx_name = "deletePermanentlySelection"]
+        fn delete_permanently_selection(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
         #[cxx_name = "openTerminalHere"]
         fn open_terminal_here(self: Pin<&mut FileListModel>);
 
@@ -944,6 +964,99 @@ impl qobject::FileListModel {
                 if failed > 0 {
                     model.as_mut().error_occurred(QString::from(&format!(
                         "Couldn't duplicate {}",
+                        pluralize_items(failed)
+                    )));
+                }
+            });
+        });
+    }
+
+    fn restore_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let target = current.join(name.to_string());
+        if let Err(e) = runtime().block_on(fm_core::trash::restore(&target)) {
+            eprintln!("restore_entry failed: {e}");
+            self.as_mut().error_occurred(QString::from(&format!(
+                "Couldn't restore \"{}\": {e}",
+                name.to_string()
+            )));
+        }
+        self.as_mut().refresh_entries_diff();
+    }
+
+    fn restore_selection(mut self: core::pin::Pin<&mut Self>) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let targets: Vec<PathBuf> = self.selected.iter().map(|name| current.join(name)).collect();
+        if targets.is_empty() {
+            return;
+        }
+
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Restoring…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let mut failed: usize = 0;
+            for target in targets {
+                if let Err(e) = fm_core::trash::restore(&target).await {
+                    eprintln!("restore_selection failed for {}: {e}", target.display());
+                    failed += 1;
+                }
+            }
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+                if failed > 0 {
+                    model.as_mut().error_occurred(QString::from(&format!(
+                        "Couldn't restore {}",
+                        pluralize_items(failed)
+                    )));
+                }
+            });
+        });
+    }
+
+    fn delete_permanently_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let target = current.join(name.to_string());
+        if let Err(e) = runtime().block_on(fm_core::trash::delete_permanently(&target)) {
+            eprintln!("delete_permanently_entry failed: {e}");
+            self.as_mut().error_occurred(QString::from(&format!(
+                "Couldn't permanently delete \"{}\": {e}",
+                name.to_string()
+            )));
+        }
+        self.as_mut().refresh_entries_diff();
+    }
+
+    fn delete_permanently_selection(mut self: core::pin::Pin<&mut Self>) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let targets: Vec<PathBuf> = self.selected.iter().map(|name| current.join(name)).collect();
+        if targets.is_empty() {
+            return;
+        }
+
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Deleting Permanently…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let mut failed: usize = 0;
+            for target in targets {
+                if let Err(e) = fm_core::trash::delete_permanently(&target).await {
+                    eprintln!(
+                        "delete_permanently_selection failed for {}: {e}",
+                        target.display()
+                    );
+                    failed += 1;
+                }
+            }
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+                if failed > 0 {
+                    model.as_mut().error_occurred(QString::from(&format!(
+                        "Couldn't permanently delete {}",
                         pluralize_items(failed)
                     )));
                 }
