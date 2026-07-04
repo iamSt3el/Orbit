@@ -28,6 +28,7 @@ fn main() {
                 "qml/components/Button.qml",
                 "qml/components/ButtonGroup.qml",
                 "qml/components/Fab.qml",
+                "qml/components/SelectionBadge.qml",
                 "qml/components/ShapeLoader.qml",
                 "qml/components/WavyProgressBar.qml",
                 "qml/components/FileListItem.qml",

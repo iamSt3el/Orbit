@@ -114,6 +114,18 @@ Item {
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                 }
+
+                SelectionBadge {
+                    width: 20
+                    height: 20
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.rightMargin: -4
+                    anchors.bottomMargin: -4
+                    selected: root.selected
+                    hovered: cellArea.containsMouse
+                    onToggleRequested: root.fileModel.setSelected(root.name, !root.selected)
+                }
             }
 
             Text {
