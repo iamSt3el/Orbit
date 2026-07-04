@@ -59,7 +59,10 @@ Item {
     function _startDrag() {
         root.Window.window._internalDragActive = true
         var names = root.selected ? root.fileModel.selectedNamesJoined().split("\n") : [root.name]
-        var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n))
+        // Percent-encode each path segment: a bare space (or #, %, ?) in a
+        // filename makes an invalid URI that strict receivers mangle or
+        // reject; our own DropAreas decode symmetrically on the way in.
+        var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n).split("/").map(encodeURIComponent).join("/"))
         root.Drag.mimeData = { "text/uri-list": uris.join("\r\n") }
         root.grabToImage((result) => {
             root.Drag.imageSource = result.url
@@ -216,7 +219,10 @@ Item {
             drop.acceptProposedAction()
             var paths = []
             for (var i = 0; i < drop.urls.length; i++) {
-                paths.push(drop.urls[i].toString().replace("file://", ""))
+                // decodeURIComponent: QUrl.toString() is percent-encoded, so a
+                // dropped "my photo.jpg" otherwise arrives as a literal
+                // "my%20photo.jpg" path and every operation on it fails.
+                paths.push(decodeURIComponent(drop.urls[i].toString().replace("file://", "")))
             }
             var destDir = root.fileModel.currentPath + "/" + root.name
             root.fileModel.dropPaths(paths.join("\n"), destDir, isMove)

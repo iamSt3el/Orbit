@@ -552,7 +552,10 @@ Window {
                                         drop.acceptProposedAction()
                                         var paths = []
                                         for (var i = 0; i < drop.urls.length; i++) {
-                                            paths.push(drop.urls[i].toString().replace("file://", ""))
+                                            // decodeURIComponent: QUrl.toString() is percent-encoded, so a
+                                            // dropped "my photo.jpg" otherwise arrives as a literal
+                                            // "my%20photo.jpg" path and every operation on it fails.
+                                            paths.push(decodeURIComponent(drop.urls[i].toString().replace("file://", "")))
                                         }
                                         fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
                                     }
@@ -721,7 +724,10 @@ Window {
                                         drop.acceptProposedAction()
                                         var paths = []
                                         for (var i = 0; i < drop.urls.length; i++) {
-                                            paths.push(drop.urls[i].toString().replace("file://", ""))
+                                            // decodeURIComponent: QUrl.toString() is percent-encoded, so a
+                                            // dropped "my photo.jpg" otherwise arrives as a literal
+                                            // "my%20photo.jpg" path and every operation on it fails.
+                                            paths.push(decodeURIComponent(drop.urls[i].toString().replace("file://", "")))
                                         }
                                         fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
                                     }
