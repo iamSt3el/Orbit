@@ -31,6 +31,7 @@ fn main() {
                 "qml/components/ShapeLoader.qml",
                 "qml/components/DecorativeShapesBackground.qml",
                 "qml/components/M3Slider.qml",
+                "qml/components/Snackbar.qml",
                 "qml/components/WavyProgressBar.qml",
                 "qml/components/FileListItem.qml",
                 "qml/components/FileGridItem.qml",
