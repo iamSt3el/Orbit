@@ -453,6 +453,20 @@ pub struct FileListModelRust {
     pending_thumbnails: std::collections::HashSet<PathBuf>,
     /// Session-only undo/redo history of this app's own file operations.
     journal: UndoJournal,
+    /// Cache of the displayed-row → `entries`-index mapping under the
+    /// active search/hidden-file filter. row_count()/data() used to
+    /// recompute this with a full O(n) scan (plus a QString conversion and
+    /// per-entry lowercasing) on EVERY call — and Qt calls data() once per
+    /// role per row, so scrolling a big directory paid that scan hundreds
+    /// of times per frame. Rebuilt via rebuild_displayed() after every
+    /// mutation of `entries`, `search_query`, or `show_hidden`.
+    displayed: Vec<usize>,
+    /// Bumped by every navigate()/refresh spawn; a background listing only
+    /// applies its result if the generation still matches, so a slow
+    /// listing that finishes after the user already navigated elsewhere
+    /// (or a newer refresh superseded it) is discarded instead of
+    /// clobbering the newer state.
+    listing_generation: u64,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -504,7 +518,23 @@ impl Default for FileListModelRust {
             selected: std::collections::HashSet::new(),
             pending_thumbnails: std::collections::HashSet::new(),
             journal: UndoJournal::default(),
+            displayed: Vec::new(),
+            listing_generation: 0,
         }
+    }
+}
+
+impl FileListModelRust {
+    /// Recomputes the `displayed` cache. Must run after every mutation of
+    /// `entries`, `search_query`, or `show_hidden` (and before the
+    /// matching end_reset/end_insert/end_remove call, so the view's
+    /// follow-up row_count()/data() queries see a consistent mapping).
+    fn rebuild_displayed(&mut self) {
+        self.displayed = matching_indices(
+            &self.entries,
+            &self.search_query.to_string(),
+            self.show_hidden,
+        );
     }
 }
 
@@ -540,36 +570,36 @@ async fn gather_entries(path: &std::path::Path) -> Vec<fm_core::FileEntry> {
 
 /// Folders always sort before files, regardless of the chosen key — only
 /// the secondary ordering (and its direction) is user-configurable.
+/// sort_by_cached_key computes each entry's key exactly once — the old
+/// comparator allocated two fresh lowercased names on every comparison,
+/// which is O(n log n) allocations on a big directory.
 fn sort_entries(entries: &mut [fm_core::FileEntry], sort_key: &str, ascending: bool) {
-    entries.sort_by(|a, b| {
-        let dir_order = match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => std::cmp::Ordering::Equal,
-        };
-        if dir_order != std::cmp::Ordering::Equal {
-            return dir_order;
-        }
-        let cmp = match sort_key {
-            "size" => a.size.cmp(&b.size),
-            "modified" => a.modified.cmp(&b.modified),
-            "type" => a.mime_type.cmp(&b.mime_type),
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        };
-        if ascending {
-            cmp
-        } else {
-            cmp.reverse()
-        }
-    });
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    enum Key {
+        Name(String),
+        Size(u64),
+        Modified(std::time::SystemTime),
+        Type(String),
+    }
+    let key_for = |e: &fm_core::FileEntry| match sort_key {
+        "size" => Key::Size(e.size),
+        "modified" => Key::Modified(e.modified),
+        "type" => Key::Type(e.mime_type.clone()),
+        _ => Key::Name(e.name.to_lowercase()),
+    };
+    // `descending` only reverses the secondary key — the leading
+    // !is_dir keeps folders grouped first in both directions.
+    if ascending {
+        entries.sort_by_cached_key(|e| (!e.is_dir, key_for(e)));
+    } else {
+        entries.sort_by_cached_key(|e| (!e.is_dir, std::cmp::Reverse(key_for(e))));
+    }
 }
 
 /// Indices into `entries` matching the current search query and hidden-file
-/// setting (all of them, in order, when nothing is filtered). Recomputed on
-/// demand rather than cached — directory sizes here are small enough
-/// (hundreds to low thousands of entries) that a fresh linear scan per
-/// `data()`/`row_count()` call is not a measurable cost, and it keeps the
-/// create/rename/delete diff logic below untouched by filtering entirely.
+/// setting (all of them, in order, when nothing is filtered). Computed once
+/// per mutation into the `displayed` cache (see rebuild_displayed) — never
+/// on demand from data()/row_count(), which Qt calls once per role per row.
 fn matching_indices(entries: &[fm_core::FileEntry], query: &str, show_hidden: bool) -> Vec<usize> {
     let query = query.to_lowercase();
     entries
@@ -583,16 +613,15 @@ fn matching_indices(entries: &[fm_core::FileEntry], query: &str, show_hidden: bo
 
 impl qobject::FileListModel {
     fn row_count(&self, _parent: &cxx_qt_lib::QModelIndex) -> i32 {
-        matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden).len() as i32
+        self.displayed.len() as i32
     }
 
     fn data(&self, index: &cxx_qt_lib::QModelIndex, role: i32) -> QVariant {
         let row = index.row();
-        let matching = matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden);
-        if row < 0 || row as usize >= matching.len() {
+        if row < 0 || row as usize >= self.displayed.len() {
             return QVariant::default();
         }
-        let entry = &self.entries[matching[row as usize]];
+        let entry = &self.entries[self.displayed[row as usize]];
         match role {
             NAME_ROLE => QVariant::from(&QString::from(&entry.name)),
             IS_DIR_ROLE => QVariant::from(&entry.is_dir),
@@ -635,8 +664,7 @@ impl qobject::FileListModel {
         let Some(idx) = self.entries.iter().position(|e| e.name == name) else {
             return;
         };
-        let matching = matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden);
-        let Some(row) = matching.iter().position(|&i| i == idx) else {
+        let Some(row) = self.displayed.iter().position(|&i| i == idx) else {
             return;
         };
         let parent = cxx_qt_lib::QModelIndex::default();
@@ -658,35 +686,39 @@ impl qobject::FileListModel {
     }
 
     fn select_range(mut self: core::pin::Pin<&mut Self>, from_name: &QString, to_name: &QString) {
-        let matching = matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden);
-        let displayed: Vec<&fm_core::FileEntry> = matching.iter().map(|&i| &self.entries[i]).collect();
+        let displayed: Vec<&fm_core::FileEntry> =
+            self.displayed.iter().map(|&i| &self.entries[i]).collect();
         let names = resolve_range_names(&displayed, &from_name.to_string(), &to_name.to_string());
+        let row_count = displayed.len();
         if names.is_empty() {
             return;
         }
         self.as_mut().rust_mut().selected = names.into_iter().collect();
 
-        if matching.is_empty() {
+        if row_count == 0 {
             return;
         }
         let parent = cxx_qt_lib::QModelIndex::default();
         let first = self.model_index(0, 0, &parent);
-        let last = self.model_index((matching.len() - 1) as i32, 0, &parent);
+        let last = self.model_index((row_count - 1) as i32, 0, &parent);
         self.as_mut()
             .data_changed(&first, &last, &cxx_qt_lib::QList::<i32>::default());
     }
 
     fn select_all(mut self: core::pin::Pin<&mut Self>) {
-        let matching = matching_indices(&self.entries, &self.search_query.to_string(), self.show_hidden);
-        let names: std::collections::HashSet<String> =
-            matching.iter().map(|&i| self.entries[i].name.clone()).collect();
+        let names: std::collections::HashSet<String> = self
+            .displayed
+            .iter()
+            .map(|&i| self.entries[i].name.clone())
+            .collect();
+        let row_count = self.displayed.len();
         self.as_mut().rust_mut().selected = names;
-        if matching.is_empty() {
+        if row_count == 0 {
             return;
         }
         let parent = cxx_qt_lib::QModelIndex::default();
         let first = self.model_index(0, 0, &parent);
-        let last = self.model_index((matching.len() - 1) as i32, 0, &parent);
+        let last = self.model_index((row_count - 1) as i32, 0, &parent);
         self.as_mut()
             .data_changed(&first, &last, &cxx_qt_lib::QList::<i32>::default());
     }
@@ -741,36 +773,64 @@ impl qobject::FileListModel {
         }
     }
 
+    /// Navigation is asynchronous: the path bar, sidebar highlight, and an
+    /// emptied view respond instantly while the listing streams in on a
+    /// background task — the old block_on() here froze the whole UI for as
+    /// long as the listing took (very visible on huge directories and slow
+    /// filesystems, and it also delayed first paint at startup).
     fn navigate(mut self: core::pin::Pin<&mut Self>, path: &QString) {
         let path_buf = PathBuf::from(path.to_string());
-        let mut entries = runtime().block_on(gather_entries(&path_buf));
-        sort_entries(
-            &mut entries,
-            &self.sort_key.to_string(),
-            self.sort_ascending,
-        );
 
+        // Clearing the entries immediately isn't just cosmetic: currentPath
+        // updates right away, so leaving the old directory's rows visible
+        // would let a click/drop during the load act on old names resolved
+        // against the NEW path.
         self.as_mut().begin_reset_model();
-        self.as_mut().rust_mut().entries = entries;
+        self.as_mut().rust_mut().entries = Vec::new();
         // A search filter (and a selection) from the previous directory
         // shouldn't silently carry over into the new one.
         self.as_mut().rust_mut().search_query = QString::from("");
         self.as_mut().rust_mut().selected.clear();
+        self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
         self.save_settings();
+
+        let generation = {
+            let mut state = self.as_mut().rust_mut();
+            state.listing_generation += 1;
+            state.listing_generation
+        };
+        let sort_key = self.sort_key.to_string();
+        let ascending = self.sort_ascending;
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let mut entries = gather_entries(&path_buf).await;
+            sort_entries(&mut entries, &sort_key, ascending);
+            let _ = qt_thread.queue(move |mut model| {
+                if model.listing_generation != generation {
+                    return;
+                }
+                model.as_mut().begin_reset_model();
+                model.as_mut().rust_mut().entries = entries;
+                model.as_mut().rust_mut().rebuild_displayed();
+                model.as_mut().end_reset_model();
+            });
+        });
     }
 
     fn set_search_query(mut self: core::pin::Pin<&mut Self>, query: &QString) {
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().search_query = query.clone();
+        self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
     }
 
     fn set_show_hidden(mut self: core::pin::Pin<&mut Self>, show_hidden: bool) {
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().show_hidden = show_hidden;
+        self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
     }
 
@@ -780,6 +840,7 @@ impl qobject::FileListModel {
         let ascending = self.sort_ascending;
         let key = self.sort_key.to_string();
         sort_entries(&mut self.as_mut().rust_mut().entries, &key, ascending);
+        self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
     }
 
@@ -788,6 +849,7 @@ impl qobject::FileListModel {
         self.as_mut().rust_mut().sort_ascending = ascending;
         let key = self.sort_key.to_string();
         sort_entries(&mut self.as_mut().rust_mut().entries, &key, ascending);
+        self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
     }
 
@@ -914,15 +976,32 @@ impl qobject::FileListModel {
     /// full reset, so a single create/rename/delete only disturbs the rows
     /// that actually changed (list position, scroll offset, and hover state
     /// of every other row survive untouched).
+    ///
+    /// The listing runs on a background task — the old block_on() here
+    /// froze the UI after every operation for as long as the re-list took.
+    /// The result is applied only if no navigate()/newer refresh started
+    /// in the meantime (same generation guard navigate uses), so a slow
+    /// stale listing can't clobber newer state.
     fn refresh_entries_diff(mut self: core::pin::Pin<&mut Self>) {
         let current = PathBuf::from(self.current_path.to_string());
-        let mut new_entries = runtime().block_on(gather_entries(&current));
-        sort_entries(
-            &mut new_entries,
-            &self.sort_key.to_string(),
-            self.sort_ascending,
-        );
-        self.as_mut().apply_entries_diff(new_entries);
+        let generation = {
+            let mut state = self.as_mut().rust_mut();
+            state.listing_generation += 1;
+            state.listing_generation
+        };
+        let sort_key = self.sort_key.to_string();
+        let ascending = self.sort_ascending;
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let mut new_entries = gather_entries(&current).await;
+            sort_entries(&mut new_entries, &sort_key, ascending);
+            let _ = qt_thread.queue(move |mut model| {
+                if model.listing_generation != generation {
+                    return;
+                }
+                model.as_mut().apply_entries_diff(new_entries);
+            });
+        });
     }
 
     fn apply_entries_diff(mut self: core::pin::Pin<&mut Self>, new_entries: Vec<fm_core::FileEntry>) {
@@ -948,26 +1027,35 @@ impl qobject::FileListModel {
             // diff mainly kicks in once "show hidden files" is turned on.
             self.as_mut().begin_reset_model();
             self.as_mut().rust_mut().entries = new_entries;
+            self.as_mut().rust_mut().rebuild_displayed();
             self.as_mut().end_reset_model();
             return;
         }
 
-        let old_entries = self.entries.clone();
         let parent = cxx_qt_lib::QModelIndex::default();
 
         // Phase 1: remove rows whose entry no longer exists, highest index
-        // first so earlier indices stay valid as we go.
-        let mut remove_indices: Vec<usize> = old_entries
-            .iter()
-            .enumerate()
-            .filter(|(_, old)| !new_entries.iter().any(|n| same_entry(n, old)))
-            .map(|(i, _)| i)
-            .collect();
-        remove_indices.sort_unstable();
+        // first so earlier indices stay valid as we go. Membership goes
+        // through a hash set — probing new_entries linearly per old entry
+        // made this quadratic, which a large directory felt on every
+        // refresh.
+        let remove_indices: Vec<usize> = {
+            let new_keys: std::collections::HashSet<(&str, bool)> = new_entries
+                .iter()
+                .map(|e| (e.name.as_str(), e.is_dir))
+                .collect();
+            self.entries
+                .iter()
+                .enumerate()
+                .filter(|(_, old)| !new_keys.contains(&(old.name.as_str(), old.is_dir)))
+                .map(|(i, _)| i)
+                .collect()
+        };
         for &idx in remove_indices.iter().rev() {
             self.as_mut()
                 .begin_remove_rows(&parent, idx as i32, idx as i32);
             self.as_mut().rust_mut().entries.remove(idx);
+            self.as_mut().rust_mut().rebuild_displayed();
             self.as_mut().end_remove_rows();
         }
 
@@ -988,6 +1076,7 @@ impl qobject::FileListModel {
                     .rust_mut()
                     .entries
                     .insert(idx, new_entry.clone());
+                self.as_mut().rust_mut().rebuild_displayed();
                 self.as_mut().end_insert_rows();
             }
         }
@@ -1333,12 +1422,6 @@ impl qobject::FileListModel {
         is_move: bool,
         verb: &'static str,
     ) {
-        // Computed synchronously, up front — one combined denominator for
-        // the whole batch (cheap relative to the actual copy), so the
-        // "done / total" display starts with a real number even for a
-        // multi-item transfer.
-        let total: u64 = sources.iter().map(|src| fm_core::ops::path_size(src)).sum();
-
         self.as_mut().set_is_busy(true);
         self.as_mut().set_busy_label(QString::from(if is_move {
             "Moving…"
@@ -1346,7 +1429,12 @@ impl qobject::FileListModel {
             "Copying…"
         }));
         self.as_mut().set_transfer_done_bytes(0);
-        self.as_mut().set_transfer_total_bytes(total as i64);
+        // The real total lands via the queue below once the background
+        // walk finishes — path_size walks the entire source tree, and
+        // computing it synchronously here froze the UI (before the busy
+        // indicator even appeared) for however long the walk of a big
+        // folder took.
+        self.as_mut().set_transfer_total_bytes(0);
         self.as_mut().set_transfer_speed_label(QString::from(""));
 
         // Shared across every item in the batch and never reset between
@@ -1381,7 +1469,25 @@ impl qobject::FileListModel {
             }
         });
 
+        let total_qt_thread = qt_thread.clone();
         runtime().spawn(async move {
+            // One combined denominator for the whole batch, computed off
+            // the UI thread (spawn_blocking: path_size is synchronous
+            // std::fs recursion) before the copying starts, so the
+            // "done / total" display still opens with a real number.
+            let sources_for_total = sources.clone();
+            let total = tokio::task::spawn_blocking(move || {
+                sources_for_total
+                    .iter()
+                    .map(|src| fm_core::ops::path_size(src))
+                    .sum::<u64>()
+            })
+            .await
+            .unwrap_or(0);
+            let _ = total_qt_thread.queue(move |mut model| {
+                model.as_mut().set_transfer_total_bytes(total as i64);
+            });
+
             let mut failed: usize = 0;
             let mut succeeded: Vec<(PathBuf, PathBuf)> = Vec::new();
             for src in sources {
@@ -1522,21 +1628,16 @@ impl qobject::FileListModel {
 
                 // Model rows are the FILTERED view of `entries` (hidden
                 // files and search misses removed — see data()/row_count()),
-                // so `idx` must be mapped through matching_indices before it
-                // can name a row. Emitting dataChanged with the raw entries
-                // index pointed at the wrong row whenever any hidden file
-                // preceded this entry in sort order — the delegate that was
-                // actually waiting never heard its thumbnail was ready, so
-                // in any folder containing a dotfile, thumbnails silently
+                // so `idx` must be mapped through the displayed cache before
+                // it can name a row. Emitting dataChanged with the raw
+                // entries index pointed at the wrong row whenever any hidden
+                // file preceded this entry in sort order — the delegate that
+                // was actually waiting never heard its thumbnail was ready,
+                // so in any folder containing a dotfile, thumbnails silently
                 // never appeared. If the entry is itself filtered out right
                 // now, there's no row to notify; the stored thumbnail_path
                 // is still picked up by data() whenever it becomes visible.
-                let matching = matching_indices(
-                    &model.entries,
-                    &model.search_query.to_string(),
-                    model.show_hidden,
-                );
-                let Some(row) = matching.iter().position(|&i| i == idx) else {
+                let Some(row) = model.displayed.iter().position(|&i| i == idx) else {
                     return;
                 };
                 let parent = cxx_qt_lib::QModelIndex::default();
