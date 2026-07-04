@@ -524,6 +524,13 @@ Window {
                             anchors.fill: parent
                             sourceComponent: fileModel.viewMode === "grid" ? gridComponent : listComponent
                         }
+
+                        Fab {
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.margins: 20
+                            onClicked: window.openNewFolderDialog()
+                        }
                     }
                 }
             }
