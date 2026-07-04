@@ -252,16 +252,107 @@ Window {
                                     // listView's contentItem) so a right-click over an
                                     // item reaches FileListItem's own MouseArea first;
                                     // this one only fires for clicks that miss every
-                                    // delegate, i.e. genuinely empty space.
+                                    // delegate, i.e. genuinely empty space. Left-button
+                                    // press-and-drag here rubber-band-selects; a plain
+                                    // click (no drag) just clears the selection, and a
+                                    // right-click clears it too before opening the
+                                    // background context menu.
                                     id: listBackgroundArea
                                     z: -1
                                     anchors.fill: parent
-                                    acceptedButtons: Qt.RightButton
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    hoverEnabled: false
+
+                                    property real pressX: 0
+                                    property real pressY: 0
+                                    property bool dragging: false
+
                                     onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
-                                    onClicked: (mouse) => {
-                                        var scenePos = listBackgroundArea.mapToItem(null, mouse.x, mouse.y)
-                                        window.openContextMenu(scenePos.x, scenePos.y)
+
+                                    onPressed: (mouse) => {
+                                        if (mouse.button !== Qt.LeftButton) {
+                                            return
+                                        }
+                                        listBackgroundArea.pressX = mouse.x
+                                        listBackgroundArea.pressY = mouse.y
+                                        listBackgroundArea.dragging = false
+                                        if (!(mouse.modifiers & Qt.ControlModifier)) {
+                                            fileModel.clearSelection()
+                                        }
                                     }
+
+                                    onPositionChanged: (mouse) => {
+                                        if (!listBackgroundArea.pressed || !(listBackgroundArea.pressedButtons & Qt.LeftButton)) {
+                                            return
+                                        }
+                                        var dx = mouse.x - listBackgroundArea.pressX
+                                        var dy = mouse.y - listBackgroundArea.pressY
+                                        // A small movement threshold before treating this
+                                        // as a drag at all — otherwise every plain click
+                                        // (which always has a tiny bit of jitter) would
+                                        // flash the selection rectangle for one frame.
+                                        if (!listBackgroundArea.dragging && Math.sqrt(dx * dx + dy * dy) < 6) {
+                                            return
+                                        }
+                                        listBackgroundArea.dragging = true
+
+                                        listSelectionRect.x = Math.min(listBackgroundArea.pressX, mouse.x)
+                                        listSelectionRect.y = Math.min(listBackgroundArea.pressY, mouse.y)
+                                        listSelectionRect.width = Math.abs(mouse.x - listBackgroundArea.pressX)
+                                        listSelectionRect.height = Math.abs(mouse.y - listBackgroundArea.pressY)
+                                        listSelectionRect.visible = true
+
+                                        // listBackgroundArea's own coordinates are
+                                        // viewport-relative; contentItem's children
+                                        // (the delegates) are positioned in
+                                        // content-relative coordinates — offset by the
+                                        // current scroll position to compare them.
+                                        var rectLeft = listSelectionRect.x + listView.contentX
+                                        var rectTop = listSelectionRect.y + listView.contentY
+                                        var rectRight = rectLeft + listSelectionRect.width
+                                        var rectBottom = rectTop + listSelectionRect.height
+
+                                        // Only currently-visible (already-instantiated)
+                                        // delegates can be swept — no auto-scroll while
+                                        // dragging near an edge (see this plan's Global
+                                        // Constraints).
+                                        var children = listView.contentItem.children
+                                        for (var i = 0; i < children.length; i++) {
+                                            var child = children[i]
+                                            if (child.name === undefined) {
+                                                continue
+                                            }
+                                            var overlaps = child.x < rectRight && (child.x + child.width) > rectLeft &&
+                                                           child.y < rectBottom && (child.y + child.height) > rectTop
+                                            if (overlaps) {
+                                                fileModel.setSelected(child.name, true)
+                                            }
+                                        }
+                                    }
+
+                                    onReleased: {
+                                        listSelectionRect.visible = false
+                                        listBackgroundArea.dragging = false
+                                    }
+
+                                    onClicked: (mouse) => {
+                                        if (listBackgroundArea.dragging) {
+                                            return
+                                        }
+                                        if (mouse.button === Qt.RightButton) {
+                                            fileModel.clearSelection()
+                                            var scenePos = listBackgroundArea.mapToItem(null, mouse.x, mouse.y)
+                                            window.openContextMenu(scenePos.x, scenePos.y)
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    id: listSelectionRect
+                                    visible: false
+                                    color: Qt.alpha(Color.scheme.primary, 0.16)
+                                    border.width: 1
+                                    border.color: Color.scheme.primary
                                 }
 
                                 ScrollBar {
@@ -311,16 +402,92 @@ Window {
                                 MouseArea {
                                     // See the matching comment in the ListView's
                                     // overlay above — kept below the delegates in
-                                    // z-order so per-item right-clicks win.
+                                    // z-order so per-item right-clicks win. Same
+                                    // left-button drag-select behavior as
+                                    // listBackgroundArea.
                                     id: gridBackgroundArea
                                     z: -1
                                     anchors.fill: parent
-                                    acceptedButtons: Qt.RightButton
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    hoverEnabled: false
+
+                                    property real pressX: 0
+                                    property real pressY: 0
+                                    property bool dragging: false
+
                                     onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
-                                    onClicked: (mouse) => {
-                                        var scenePos = gridBackgroundArea.mapToItem(null, mouse.x, mouse.y)
-                                        window.openContextMenu(scenePos.x, scenePos.y)
+
+                                    onPressed: (mouse) => {
+                                        if (mouse.button !== Qt.LeftButton) {
+                                            return
+                                        }
+                                        gridBackgroundArea.pressX = mouse.x
+                                        gridBackgroundArea.pressY = mouse.y
+                                        gridBackgroundArea.dragging = false
+                                        if (!(mouse.modifiers & Qt.ControlModifier)) {
+                                            fileModel.clearSelection()
+                                        }
                                     }
+
+                                    onPositionChanged: (mouse) => {
+                                        if (!gridBackgroundArea.pressed || !(gridBackgroundArea.pressedButtons & Qt.LeftButton)) {
+                                            return
+                                        }
+                                        var dx = mouse.x - gridBackgroundArea.pressX
+                                        var dy = mouse.y - gridBackgroundArea.pressY
+                                        if (!gridBackgroundArea.dragging && Math.sqrt(dx * dx + dy * dy) < 6) {
+                                            return
+                                        }
+                                        gridBackgroundArea.dragging = true
+
+                                        gridSelectionRect.x = Math.min(gridBackgroundArea.pressX, mouse.x)
+                                        gridSelectionRect.y = Math.min(gridBackgroundArea.pressY, mouse.y)
+                                        gridSelectionRect.width = Math.abs(mouse.x - gridBackgroundArea.pressX)
+                                        gridSelectionRect.height = Math.abs(mouse.y - gridBackgroundArea.pressY)
+                                        gridSelectionRect.visible = true
+
+                                        var rectLeft = gridSelectionRect.x + gridView.contentX
+                                        var rectTop = gridSelectionRect.y + gridView.contentY
+                                        var rectRight = rectLeft + gridSelectionRect.width
+                                        var rectBottom = rectTop + gridSelectionRect.height
+
+                                        var children = gridView.contentItem.children
+                                        for (var i = 0; i < children.length; i++) {
+                                            var child = children[i]
+                                            if (child.name === undefined) {
+                                                continue
+                                            }
+                                            var overlaps = child.x < rectRight && (child.x + child.width) > rectLeft &&
+                                                           child.y < rectBottom && (child.y + child.height) > rectTop
+                                            if (overlaps) {
+                                                fileModel.setSelected(child.name, true)
+                                            }
+                                        }
+                                    }
+
+                                    onReleased: {
+                                        gridSelectionRect.visible = false
+                                        gridBackgroundArea.dragging = false
+                                    }
+
+                                    onClicked: (mouse) => {
+                                        if (gridBackgroundArea.dragging) {
+                                            return
+                                        }
+                                        if (mouse.button === Qt.RightButton) {
+                                            fileModel.clearSelection()
+                                            var scenePos = gridBackgroundArea.mapToItem(null, mouse.x, mouse.y)
+                                            window.openContextMenu(scenePos.x, scenePos.y)
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    id: gridSelectionRect
+                                    visible: false
+                                    color: Qt.alpha(Color.scheme.primary, 0.16)
+                                    border.width: 1
+                                    border.color: Color.scheme.primary
                                 }
 
                                 ScrollBar {
