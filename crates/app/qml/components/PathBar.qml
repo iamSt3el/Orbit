@@ -79,20 +79,107 @@ Rectangle {
         }
     }
 
-    Text {
-        text: root.path
+    // Clickable breadcrumbs (roadmap item 13): every ancestor is a chip
+    // that navigates on click; the last (current) segment is emphasized
+    // and inert. Replaces the old elided plain-text path.
+    Item {
+        id: crumbs
         opacity: root.searching ? 0 : 1
-        elide: Text.ElideMiddle
+        visible: opacity > 0
         anchors.left: leadingIcon.right
         anchors.leftMargin: 8
         anchors.right: parent.right
         anchors.rightMargin: 14
-        anchors.verticalCenter: parent.verticalCenter
-        color: Color.scheme.surfaceText
-        font.family: Type.bodyLarge.family
-        font.pixelSize: Type.bodyLarge.size
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        clip: true
 
         Behavior on opacity { NumberAnimation { duration: Motion.standard.duration; easing.type: Easing.OutCubic } }
+
+        readonly property var segments: {
+            var p = root.path
+            if (p.length === 0) {
+                return []
+            }
+            var segs = [{ label: "/", target: "/" }]
+            if (p === "/") {
+                return segs
+            }
+            var parts = p.split("/").filter((s) => s.length > 0)
+            var acc = ""
+            for (var i = 0; i < parts.length; i++) {
+                acc += "/" + parts[i]
+                segs.push({ label: parts[i], target: acc })
+            }
+            return segs
+        }
+
+        Row {
+            id: crumbRow
+            spacing: 0
+            anchors.verticalCenter: parent.verticalCenter
+            // Deep paths overflow to the LEFT: the deepest segments (the
+            // ones worth clicking) stay visible at the right edge.
+            x: Math.min(0, crumbs.width - crumbRow.width)
+
+            Repeater {
+                model: crumbs.segments
+
+                delegate: Row {
+                    id: crumb
+                    required property var modelData
+                    required property int index
+                    readonly property bool isLast: index === crumbs.segments.length - 1
+                    spacing: 0
+
+                    Icon {
+                        visible: crumb.index > 0
+                        content: "chevron_right"
+                        iconSize: 14
+                        color: Color.scheme.surfaceVariantText
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Item {
+                        width: _crumbText.implicitWidth + 12
+                        height: 26
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        // Highlight is a sibling of the text, not its
+                        // parent — see TopAppBar's back button for why.
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Shape.small
+                            color: Elevation.surfaceAt(3)
+                            opacity: (_crumbArea.containsMouse && !crumb.isLast) ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                        }
+
+                        Text {
+                            id: _crumbText
+                            anchors.centerIn: parent
+                            text: crumb.modelData.label
+                            color: crumb.isLast ? Color.scheme.surfaceText : Color.scheme.surfaceVariantText
+                            font.family: Type.bodyLarge.family
+                            font.pixelSize: Type.bodyLarge.size
+                            font.weight: crumb.isLast ? Font.Medium : Font.Normal
+                        }
+
+                        MouseArea {
+                            id: _crumbArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: crumb.isLast ? Qt.ArrowCursor : Qt.PointingHandCursor
+                            onClicked: {
+                                if (!crumb.isLast && root.fileModel) {
+                                    root.fileModel.navigate(crumb.modelData.target)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     TextInput {
