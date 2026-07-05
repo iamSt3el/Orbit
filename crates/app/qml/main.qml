@@ -527,10 +527,22 @@ Window {
                     Item {
                         id: folderHeadline
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 44
-                        Layout.minimumHeight: 44
-                        Layout.maximumHeight: 44
+                        // Collapses as the view scrolls (round-2 item 17,
+                        // the M3 large-top-app-bar behavior): full 44px at
+                        // rest, folded away over the first ~88px of scroll.
+                        readonly property real _collapse: {
+                            var v = viewLoader.item
+                            if (!v) {
+                                return 0
+                            }
+                            return Math.max(0, Math.min(1, v.contentY / 88))
+                        }
+                        Layout.preferredHeight: 44 * (1 - _collapse)
+                        Layout.minimumHeight: Layout.preferredHeight
+                        Layout.maximumHeight: Layout.preferredHeight
                         Layout.leftMargin: 16
+                        opacity: 1 - _collapse
+                        clip: true
 
                         readonly property string folderName: {
                             var p = fileModel.currentPath ? fileModel.currentPath : ""
@@ -1206,7 +1218,64 @@ Window {
                             size: 48
                             color: Color.scheme.primary
                             visible: fileModel.isListing && _listingSpinnerGate.elapsed
+                                && fileModel.viewMode === "grid"
                             running: visible
+                        }
+
+                        // Skeleton placeholder rows (round-2 item 18) — the
+                        // list-mode loading state: content-shaped and
+                        // breathing, which reads as "rows are coming" better
+                        // than a centered spinner. Same 150ms gate.
+                        Column {
+                            visible: fileModel.isListing && _listingSpinnerGate.elapsed
+                                && fileModel.viewMode === "list"
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 10
+                            clip: true
+
+                            SequentialAnimation on opacity {
+                                running: parent.visible
+                                loops: Animation.Infinite
+                                NumberAnimation { from: 1; to: 0.45; duration: 600; easing.type: Easing.InOutQuad }
+                                NumberAnimation { from: 0.45; to: 1; duration: 600; easing.type: Easing.InOutQuad }
+                            }
+
+                            Repeater {
+                                model: 8
+
+                                delegate: Item {
+                                    id: skelRow
+                                    required property int index
+                                    width: parent.width
+                                    height: 50
+                                    // Rows fade toward the bottom, hinting
+                                    // at a list rather than a fixed block.
+                                    opacity: 1 - index * 0.11
+
+                                    Rectangle {
+                                        id: skelIcon
+                                        x: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 36
+                                        height: 36
+                                        radius: Shape.medium
+                                        color: Color.scheme.surfaceContainerHigh
+                                    }
+
+                                    Rectangle {
+                                        anchors.left: skelIcon.right
+                                        anchors.leftMargin: 16
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        // Varied bar widths so it reads as
+                                        // filenames, not a table.
+                                        width: parent.width * (0.22 + 0.13 * (skelRow.index % 3))
+                                        height: 12
+                                        radius: Shape.full
+                                        color: Color.scheme.surfaceContainerHigh
+                                    }
+                                }
+                            }
                         }
 
                         Timer {
