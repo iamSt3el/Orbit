@@ -1,9 +1,12 @@
 # UI/UX Roadmap — M3 Expressive
 
-> **Status (2026-07-05):** items 1–12 all shipped (items 1–6 and 10–12
-> via specs/plans under `docs/superpowers/`; items 7–9 and round-2
-> items 13–14 went straight to implementation by request — one commit
-> per feature in git history). Remaining candidates: 15–26 below.
+> **Status (2026-07-05):** items 1–14 and 16–21 shipped (items 1–6 and
+> 10–12 via specs/plans under `docs/superpowers/`; the rest straight to
+> implementation by request — one commit per feature in git history).
+> Remaining: **15** (conflict dialog) and **22–26** — each is a
+> session-sized build (async UI round-trip, preview pane, tabs, volume
+> listing, recursive search, desktop-entry parsing) best taken one at a
+> time.
 
 Candidate UI/UX work, keeping genuine M3 Expressive fidelity (the
 project's #1 goal) front and center. Grounded in the existing component
