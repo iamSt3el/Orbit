@@ -185,6 +185,13 @@ In the `undo_journal_tests` module's `describes_each_operation_kind` test, along
 Run: `cargo build -p fm-app && cargo test -p fm-app`
 Expected: build succeeds; all tests pass including the extended describe test.
 
+> **Correction (found during execution):** `execute_redo` (~line 2090) also
+> matches exhaustively on `UndoOp` — the new variant needs a redo arm there
+> too, mirroring CreateFolder's: re-create the empty file with
+> `File::options().write(true).create_new(true)` (built-in fail-safe if
+> anything already sits at the path), returning
+> `Some(UndoOp::CreateFile { path })` on success.
+
 - [ ] **Step 6: Commit**
 
 ```bash
