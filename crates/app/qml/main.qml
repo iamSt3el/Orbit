@@ -756,6 +756,22 @@ Window {
                             anchors.margins: 20
                             onClicked: window.openNewFolderDialog()
                         }
+
+                        // Contextual floating toolbar for bulk actions —
+                        // springs up while 2+ items are selected. Not a
+                        // popup: deliberately absent from anyPopupOpen.
+                        SelectionToolbar {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 16
+                            // window.fileListModel, not the bare fileModel
+                            // id — this component declares its own
+                            // `property var fileModel` (see the alias
+                            // comment at the top of this file).
+                            fileModel: window.fileListModel
+                            onDeleteRequested: (count) => window.openDeleteSelectionConfirmDialog(count)
+                            onDeletePermanentlyRequested: (count) => window.openDeletePermanentlySelectionConfirmDialog(count)
+                        }
                     }
                 }
             }
