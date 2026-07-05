@@ -20,6 +20,7 @@ Item {
     // Bound to the model's `selected` role — true while this row is part
     // of the current multi-selection (Ctrl/Shift/drag-select).
     required property bool selected
+    required property int index
 
     // Overridable from the view-options menu; defaults preserve the
     // original fixed sizing.
@@ -32,6 +33,10 @@ Item {
     // the attached ListView.view property rather than a manually-passed
     // property — more reliable across delegate recycling.
     readonly property var fileModel: ListView.view ? ListView.view.model : null
+
+    // Keyboard cursor (roadmap item 7): the model-side cursorRow indexes
+    // displayed rows, which is exactly this delegate's index.
+    readonly property bool isCursor: fileModel ? fileModel.cursorRow === root.index : false
 
     // Dragging a row that's already part of the selection drags the whole
     // selection; dragging an unselected row drags just that one item —
@@ -107,6 +112,17 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
     }
 
+    // M3 focus ring on the keyboard-cursor row — an outline, not a fill,
+    // so it layers cleanly over both the selection tint and hover.
+    Rectangle {
+        anchors.fill: parent
+        radius: Shape.small
+        color: "transparent"
+        border.width: 2
+        border.color: Color.scheme.primary
+        visible: root.isCursor
+    }
+
     MouseArea {
         id: rowArea
         anchors.fill: parent
@@ -167,6 +183,10 @@ Item {
                 root.fileModel.setSelected(root.name, true)
                 root.ListView.view.selectionAnchor = root.name
             }
+            // Arrow keys continue from the clicked row; focus bubbles
+            // from the delegate up to fileViewArea's Keys handler.
+            root.fileModel.setCursor(root.name)
+            root.forceActiveFocus()
         }
         onDoubleClicked: (mouse) => {
             if (mouse.button !== Qt.LeftButton) {

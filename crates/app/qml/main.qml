@@ -73,6 +73,12 @@ Window {
     property string _lastPath: ""
     property string _navDirection: "neutral"
 
+    // Keyboard focus lives on fileViewArea (see its Keys handler). Every
+    // dialog/menu steals focus while open; hand it back the moment the
+    // last popup closes so arrows/type-ahead keep working without an
+    // extra click.
+    onAnyPopupOpenChanged: if (!anyPopupOpen) fileViewArea.forceActiveFocus()
+
     // A same-named alias, not just "fileModel" — `fileModel` itself is an
     // id, not a property of Window, so `window.fileModel` doesn't exist
     // (silently evaluates to undefined). Any popup below that's created
@@ -527,6 +533,100 @@ Window {
                         Layout.fillHeight: true
                         clip: true
 
+                        // Keyboard navigation (roadmap item 7). This Item
+                        // holds keyboard focus for the whole view area —
+                        // delegates and background areas hand focus back
+                        // here on click, and onAnyPopupOpenChanged (on the
+                        // Window) restores it after dialogs. Arrows move
+                        // the Rust-side cursor; Shift extends the
+                        // selection; typing does type-ahead find. Enter
+                        // needs nothing here — the cursor row is selected,
+                        // and the existing Return shortcut opens the
+                        // selection.
+                        focus: true
+
+                        property string _typeAheadBuffer: ""
+
+                        Timer {
+                            id: _typeAheadReset
+                            interval: 1000
+                            onTriggered: fileViewArea._typeAheadBuffer = ""
+                        }
+
+                        function _scrollToCursor() {
+                            if (viewLoader.item && fileModel.cursorRow >= 0) {
+                                viewLoader.item.scrollToRow(fileModel.cursorRow)
+                            }
+                        }
+
+                        Keys.onPressed: (event) => {
+                            if (window.anyPopupOpen || !viewLoader.item) {
+                                return
+                            }
+                            var extend = (event.modifiers & Qt.ShiftModifier) !== 0
+                            var rowStep = viewLoader.item.keyRowStep
+                            var handled = true
+                            switch (event.key) {
+                            case Qt.Key_Up:
+                                fileModel.moveCursor(-rowStep, extend)
+                                break
+                            case Qt.Key_Down:
+                                fileModel.moveCursor(rowStep, extend)
+                                break
+                            case Qt.Key_Left:
+                                // Grid only — in list view Left/Right stay
+                                // unhandled (Alt+Left etc. keep working).
+                                if (viewLoader.item.keyColStep === 1) {
+                                    fileModel.moveCursor(-1, extend)
+                                } else {
+                                    handled = false
+                                }
+                                break
+                            case Qt.Key_Right:
+                                if (viewLoader.item.keyColStep === 1) {
+                                    fileModel.moveCursor(1, extend)
+                                } else {
+                                    handled = false
+                                }
+                                break
+                            case Qt.Key_Home:
+                                // ±2^30, not INT_MAX — moveCursor clamps in
+                                // i64 so the edges are just huge deltas.
+                                fileModel.moveCursor(-1073741824, extend)
+                                break
+                            case Qt.Key_End:
+                                fileModel.moveCursor(1073741824, extend)
+                                break
+                            default:
+                                handled = false
+                                // Type-ahead: printable single characters
+                                // only — control keys (Backspace = go up,
+                                // Delete = trash, Enter = open) must keep
+                                // their existing shortcuts.
+                                if (event.text.length === 1
+                                        && event.text.charCodeAt(0) >= 32
+                                        && event.text.charCodeAt(0) !== 127
+                                        && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+                                    var attempt = fileViewArea._typeAheadBuffer + event.text
+                                    var row = fileModel.typeAhead(attempt)
+                                    if (row < 0 && attempt.length > 1) {
+                                        // Dead-end buffer: restart from just
+                                        // the new character, the usual
+                                        // desktop-FM behavior.
+                                        attempt = event.text
+                                        row = fileModel.typeAhead(attempt)
+                                    }
+                                    fileViewArea._typeAheadBuffer = attempt
+                                    _typeAheadReset.restart()
+                                    handled = true
+                                }
+                            }
+                            if (handled) {
+                                fileViewArea._scrollToCursor()
+                                event.accepted = true
+                            }
+                        }
+
                         Component {
                             id: listComponent
 
@@ -540,6 +640,14 @@ Window {
                                 reuseItems: true
                                 cacheBuffer: 400
                                 acceptedButtons: Qt.NoButton
+                                // The keyboard cursor is model-side
+                                // (fileModel.cursorRow), not the view's
+                                // currentIndex — keep ListView's own key
+                                // handling out of the way.
+                                keyNavigationEnabled: false
+                                readonly property int keyRowStep: 1
+                                readonly property int keyColStep: 0
+                                function scrollToRow(row) { positionViewAtIndex(row, ListView.Contain) }
                                 // Last plain- or Ctrl-clicked name, for
                                 // Shift+click range math — transient UI
                                 // state, not part of "what's selected"
@@ -608,6 +716,7 @@ Window {
                                     onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
 
                                     onPressed: (mouse) => {
+                                        fileViewArea.forceActiveFocus()
                                         if (mouse.button !== Qt.LeftButton) {
                                             return
                                         }
@@ -763,6 +872,11 @@ Window {
                                 anchors.rightMargin: 14
                                 model: fileModel
                                 property string selectionAnchor: ""
+                                // See the ListView's matching comment.
+                                keyNavigationEnabled: false
+                                readonly property int keyRowStep: columns
+                                readonly property int keyColStep: 1
+                                function scrollToRow(row) { positionViewAtIndex(row, GridView.Contain) }
                                 readonly property int minCellWidth: window.activeIconProfile.gridMinWidth
                                 readonly property int columns: Math.max(1, Math.floor(width / minCellWidth))
                                 // Not Math.floor()'d — GridView's cellWidth accepts a
@@ -825,6 +939,7 @@ Window {
                                     onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
 
                                     onPressed: (mouse) => {
+                                        fileViewArea.forceActiveFocus()
                                         if (mouse.button !== Qt.LeftButton) {
                                             return
                                         }

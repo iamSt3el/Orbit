@@ -71,6 +71,12 @@ pub mod qobject {
         // Kept in sync with the Vec (the source of truth) and persisted
         // by sync_pinned_folders().
         #[qproperty(QString, pinned_folders_joined, cxx_name = "pinnedFoldersJoined")]
+        // Keyboard cursor (roadmap item 7): index into the DISPLAYED rows
+        // (the same space the views render), -1 = no cursor. Delegates
+        // draw the focus ring off `cursorRow === index`; moveCursor/
+        // setCursor/typeAhead below are the only writers besides the
+        // clamping in navigate() and the displayed-mutation paths.
+        #[qproperty(i32, cursor_row, cxx_name = "cursorRow")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -176,6 +182,28 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openSelectedEntry"]
         fn open_selected_entry(self: Pin<&mut FileListModel>);
+
+        /// Moves the keyboard cursor by `delta` displayed rows (clamped to
+        /// the listing), selecting the row it lands on — or, with `extend`
+        /// (Shift+arrows), extending the selection from the cursor anchor.
+        /// A huge ±delta is how Home/End reach the edges.
+        #[qinvokable]
+        #[cxx_name = "moveCursor"]
+        fn move_cursor(self: Pin<&mut FileListModel>, delta: i32, extend: bool);
+
+        /// Places the cursor (and its Shift-extension anchor) on the named
+        /// entry — called by delegates on click so arrow keys continue
+        /// from the clicked row.
+        #[qinvokable]
+        #[cxx_name = "setCursor"]
+        fn set_cursor(self: Pin<&mut FileListModel>, name: &QString);
+
+        /// Type-ahead find: jumps cursor + selection to the first
+        /// displayed entry whose name starts with `prefix`
+        /// (case-insensitive). Returns the row it landed on, or -1.
+        #[qinvokable]
+        #[cxx_name = "typeAhead"]
+        fn type_ahead(self: Pin<&mut FileListModel>, prefix: &QString) -> i32;
     }
 
     unsafe extern "RustQt" {
@@ -523,6 +551,11 @@ pub struct FileListModelRust {
     pinned_folders: Vec<String>,
     /// Backing for the pinnedFoldersJoined qproperty.
     pinned_folders_joined: QString,
+    /// Backing for the cursorRow qproperty (-1 = no cursor).
+    cursor_row: i32,
+    /// Where Shift+arrow extension anchors from — the row the cursor last
+    /// landed on via a non-extending move/click. Displayed-row index.
+    cursor_anchor_row: i32,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -582,6 +615,8 @@ impl Default for FileListModelRust {
             is_listing: false,
             pinned_folders: settings.pinned_folders.clone(),
             pinned_folders_joined: QString::from(&settings.pinned_folders.join("\n")),
+            cursor_row: -1,
+            cursor_anchor_row: -1,
         }
     }
 }
@@ -833,6 +868,113 @@ impl qobject::FileListModel {
         QString::from(&names.join("\n"))
     }
 
+    /// Name of the displayed row at `row`, if it exists.
+    fn displayed_name_at(&self, row: i32) -> Option<String> {
+        if row < 0 {
+            return None;
+        }
+        self.displayed
+            .get(row as usize)
+            .map(|&i| self.entries[i].name.clone())
+    }
+
+    /// Re-clamps the cursor after `displayed` changed shape (filter
+    /// toggles, watcher diffs). The cursor may land on a different file
+    /// than before — acceptable; it must just never point outside the
+    /// listing.
+    fn clamp_cursor(mut self: core::pin::Pin<&mut Self>) {
+        let count = self.displayed.len() as i32;
+        let clamped = if count == 0 {
+            -1
+        } else {
+            self.cursor_row.min(count - 1)
+        };
+        if clamped != self.cursor_row {
+            self.as_mut().set_cursor_row(clamped);
+        }
+        if self.cursor_anchor_row >= count {
+            self.as_mut().rust_mut().cursor_anchor_row = clamped;
+        }
+    }
+
+    fn move_cursor(mut self: core::pin::Pin<&mut Self>, delta: i32, extend: bool) {
+        let count = self.displayed.len() as i64;
+        if count == 0 {
+            return;
+        }
+        // i64 arithmetic: Home/End arrive as ±2^30, which would overflow
+        // an i32 addition in debug builds.
+        let current = self.cursor_row as i64;
+        let next = if current < 0 {
+            // No cursor yet: the first press lands on an edge rather than
+            // moving relative to nothing.
+            if delta >= 0 {
+                0
+            } else {
+                count - 1
+            }
+        } else {
+            (current + delta as i64).clamp(0, count - 1)
+        } as i32;
+        self.as_mut().set_cursor_row(next);
+        let Some(next_name) = self.displayed_name_at(next) else {
+            return;
+        };
+        let next_q = QString::from(&next_name);
+        if extend {
+            if self.cursor_anchor_row < 0 || self.cursor_anchor_row as usize >= self.displayed.len() {
+                let fallback = if current >= 0 { current as i32 } else { next };
+                self.as_mut().rust_mut().cursor_anchor_row = fallback;
+            }
+            let Some(anchor_name) = self.displayed_name_at(self.cursor_anchor_row) else {
+                return;
+            };
+            let anchor_q = QString::from(&anchor_name);
+            self.as_mut().select_range(&anchor_q, &next_q);
+        } else {
+            self.as_mut().rust_mut().cursor_anchor_row = next;
+            self.as_mut().clear_selection();
+            self.as_mut().set_selected(&next_q, true);
+        }
+    }
+
+    fn set_cursor(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let n = name.to_string();
+        let Some(row) = self
+            .displayed
+            .iter()
+            .position(|&i| self.entries[i].name == n)
+        else {
+            return;
+        };
+        let row = row as i32;
+        self.as_mut().set_cursor_row(row);
+        self.as_mut().rust_mut().cursor_anchor_row = row;
+    }
+
+    fn type_ahead(mut self: core::pin::Pin<&mut Self>, prefix: &QString) -> i32 {
+        let p = prefix.to_string().to_lowercase();
+        if p.is_empty() {
+            return -1;
+        }
+        let Some(row) = self
+            .displayed
+            .iter()
+            .position(|&i| self.entries[i].name.to_lowercase().starts_with(&p))
+        else {
+            return -1;
+        };
+        let row = row as i32;
+        self.as_mut().set_cursor_row(row);
+        self.as_mut().rust_mut().cursor_anchor_row = row;
+        if let Some(name) = self.displayed_name_at(row) {
+            let name_q = QString::from(&name);
+            self.as_mut().clear_selection();
+            self.as_mut().set_selected(&name_q, true);
+        }
+        row
+    }
+
     fn open_selected_entry(mut self: core::pin::Pin<&mut Self>) {
         if self.selected.len() != 1 {
             return;
@@ -872,6 +1014,8 @@ impl qobject::FileListModel {
         self.as_mut().end_reset_model();
         self.as_mut().sync_selection_count();
         self.as_mut().set_search_active(false);
+        self.as_mut().set_cursor_row(-1);
+        self.as_mut().rust_mut().cursor_anchor_row = -1;
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
         self.save_settings();
@@ -974,6 +1118,7 @@ impl qobject::FileListModel {
         self.as_mut().end_reset_model();
         let active = !query.to_string().is_empty();
         self.as_mut().set_search_active(active);
+        self.as_mut().clamp_cursor();
     }
 
     fn set_show_hidden(mut self: core::pin::Pin<&mut Self>, show_hidden: bool) {
@@ -981,6 +1126,7 @@ impl qobject::FileListModel {
         self.as_mut().rust_mut().show_hidden = show_hidden;
         self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
+        self.as_mut().clamp_cursor();
     }
 
     fn set_sort_key(mut self: core::pin::Pin<&mut Self>, sort_key: &QString) {
@@ -1240,6 +1386,7 @@ impl qobject::FileListModel {
             self.as_mut().rust_mut().entries = new_entries;
             self.as_mut().rust_mut().rebuild_displayed();
             self.as_mut().end_reset_model();
+            self.as_mut().clamp_cursor();
             return;
         }
 
@@ -1319,6 +1466,8 @@ impl qobject::FileListModel {
                 &cxx_qt_lib::QList::<i32>::default(),
             );
         }
+
+        self.as_mut().clamp_cursor();
     }
 
     fn open_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {

@@ -18,6 +18,7 @@ Item {
     required property string thumbnailPath
     // See FileListItem.qml's matching property.
     required property bool selected
+    required property int index
 
     // Overridable from the view-options menu; defaults preserve the
     // original fixed sizing.
@@ -27,6 +28,9 @@ Item {
     signal contextMenuRequested(real x, real y)
 
     readonly property var fileModel: GridView.view ? GridView.view.model : null
+
+    // See FileListItem.qml's matching property.
+    readonly property bool isCursor: fileModel ? fileModel.cursorRow === root.index : false
 
     // See FileListItem.qml's matching function for why the drag runs on
     // the window's persistent dragProxy instead of this delegate.
@@ -79,6 +83,23 @@ Item {
             color: Color.scheme.secondaryContainer
             opacity: root.selected ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        }
+
+        // M3 focus ring on the keyboard-cursor tile — tracks the selected
+        // state's corner morph so the outline hugs the same shape.
+        Rectangle {
+            anchors.fill: parent
+            radius: root.selected ? Shape.extraLarge : Shape.medium
+            Behavior on radius {
+                SpringAnimation {
+                    spring: Motion.springStandard.spring
+                    damping: Motion.springStandard.damping
+                }
+            }
+            color: "transparent"
+            border.width: 2
+            border.color: Color.scheme.primary
+            visible: root.isCursor
         }
 
         Rectangle {
@@ -227,6 +248,9 @@ Item {
                     root.fileModel.setSelected(root.name, true)
                     root.GridView.view.selectionAnchor = root.name
                 }
+                // See FileListItem.qml's matching lines.
+                root.fileModel.setCursor(root.name)
+                root.forceActiveFocus()
             }
             onDoubleClicked: (mouse) => {
                 if (mouse.button !== Qt.LeftButton) {
