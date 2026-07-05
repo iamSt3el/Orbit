@@ -47,6 +47,12 @@ pub mod qobject {
         #[qproperty(i64, transfer_done_bytes, cxx_name = "transferDoneBytes")]
         #[qproperty(i64, transfer_total_bytes, cxx_name = "transferTotalBytes")]
         #[qproperty(QString, transfer_speed_label, cxx_name = "transferSpeedLabel")]
+        // Reactive mirror of selected.len(). selectedCount() (the
+        // invokable below) serves imperative callers; this property is
+        // what QML *binds* to — the floating selection toolbar shows and
+        // hides itself off it. Kept in sync by sync_selection_count(),
+        // which every mutation of `selected` must call.
+        #[qproperty(i32, selection_count, cxx_name = "selectionCount")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -451,6 +457,9 @@ pub struct FileListModelRust {
     /// pruned automatically in apply_entries_diff() whenever a selected
     /// name disappears from the listing.
     selected: std::collections::HashSet<String>,
+    /// Reactive mirror of `selected.len()` for the selectionCount
+    /// qproperty — see sync_selection_count().
+    selection_count: i32,
     /// Source paths currently being thumbnailed on a background task —
     /// guards against re-spawning a duplicate task for the same entry if a
     /// delegate re-requests it (e.g. scrolling it out and back into view)
@@ -522,6 +531,7 @@ impl Default for FileListModelRust {
             clipboard_paths: Vec::new(),
             clipboard_is_cut: false,
             selected: std::collections::HashSet::new(),
+            selection_count: 0,
             pending_thumbnails: std::collections::HashSet::new(),
             journal: UndoJournal::default(),
             displayed: Vec::new(),
@@ -679,6 +689,17 @@ impl qobject::FileListModel {
             .data_changed(&model_index, &model_index, &cxx_qt_lib::QList::<i32>::default());
     }
 
+    /// Re-derives the reactive `selectionCount` property from
+    /// `selected.len()`. Every mutation of `selected` must call this —
+    /// it reads the final length rather than counting incrementally, so
+    /// it can't drift. Guarded so an unchanged count emits no signal.
+    fn sync_selection_count(mut self: core::pin::Pin<&mut Self>) {
+        let count = self.selected.len() as i32;
+        if self.selection_count != count {
+            self.as_mut().set_selection_count(count);
+        }
+    }
+
     fn set_selected(mut self: core::pin::Pin<&mut Self>, name: &QString, selected: bool) {
         let name = name.to_string();
         let changed = if selected {
@@ -688,6 +709,7 @@ impl qobject::FileListModel {
         };
         if changed {
             self.as_mut().notify_row_for_name(&name);
+            self.as_mut().sync_selection_count();
         }
     }
 
@@ -700,6 +722,7 @@ impl qobject::FileListModel {
             return;
         }
         self.as_mut().rust_mut().selected = names.into_iter().collect();
+        self.as_mut().sync_selection_count();
 
         if row_count == 0 {
             return;
@@ -719,6 +742,7 @@ impl qobject::FileListModel {
             .collect();
         let row_count = self.displayed.len();
         self.as_mut().rust_mut().selected = names;
+        self.as_mut().sync_selection_count();
         if row_count == 0 {
             return;
         }
@@ -735,6 +759,7 @@ impl qobject::FileListModel {
         }
         let row_count = self.row_count(&cxx_qt_lib::QModelIndex::default());
         self.as_mut().rust_mut().selected.clear();
+        self.as_mut().sync_selection_count();
         if row_count == 0 {
             return;
         }
@@ -799,6 +824,7 @@ impl qobject::FileListModel {
         self.as_mut().rust_mut().selected.clear();
         self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
+        self.as_mut().sync_selection_count();
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
         self.save_settings();
@@ -1091,6 +1117,7 @@ impl qobject::FileListModel {
             .rust_mut()
             .selected
             .retain(|name| new_names.contains(name));
+        self.as_mut().sync_selection_count();
 
         if !self.search_query.to_string().is_empty() || !self.show_hidden {
             // The row-level diff below assumes model rows map 1:1 onto
