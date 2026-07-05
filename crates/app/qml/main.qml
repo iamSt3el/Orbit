@@ -389,6 +389,76 @@ Window {
                         onOptionsRequested: (x, y) => window.openViewOptionsMenu(x, y)
                     }
 
+                    // Current-folder headline (roadmap item 12) — the
+                    // folder's display name at Expressive type scale,
+                    // crossfading old→new on navigate. No horizontal
+                    // motion here: the view host below already carries
+                    // the directional slide; doubling it would be noise.
+                    // The Nebula-style 56px app-bar row above stays as
+                    // designed.
+                    Item {
+                        id: folderHeadline
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 44
+                        Layout.minimumHeight: 44
+                        Layout.maximumHeight: 44
+                        Layout.leftMargin: 16
+
+                        readonly property string folderName: {
+                            var p = fileModel.currentPath ? fileModel.currentPath : ""
+                            if (p.length === 0 || p === "/") return "Root"
+                            if (p === fileModel.trashPath) return "Trash"
+                            return p.substring(p.lastIndexOf("/") + 1)
+                        }
+                        onFolderNameChanged: {
+                            _headlineOld.text = _headlineNew.text
+                            _headlineNew.text = folderName
+                            _headlineSwap.restart()
+                        }
+                        Component.onCompleted: _headlineNew.text = folderName
+
+                        Text {
+                            id: _headlineOld
+                            anchors.verticalCenter: parent.verticalCenter
+                            opacity: 0
+                            color: Color.scheme.surfaceText
+                            font.family: Type.headlineSmall.family
+                            font.weight: Type.headlineSmall.weight
+                            font.pixelSize: Type.headlineSmall.size
+                        }
+
+                        Text {
+                            id: _headlineNew
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Color.scheme.surfaceText
+                            font.family: Type.headlineSmall.family
+                            font.weight: Type.headlineSmall.weight
+                            font.pixelSize: Type.headlineSmall.size
+                        }
+
+                        ParallelAnimation {
+                            id: _headlineSwap
+                            NumberAnimation {
+                                target: _headlineOld
+                                property: "opacity"
+                                from: 1
+                                to: 0
+                                duration: Motion.standard.duration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Motion.standard.bezier
+                            }
+                            NumberAnimation {
+                                target: _headlineNew
+                                property: "opacity"
+                                from: 0
+                                to: 1
+                                duration: Motion.standard.duration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Motion.standard.bezier
+                            }
+                        }
+                    }
+
                     Item {
                         id: fileViewArea
                         Layout.fillWidth: true
