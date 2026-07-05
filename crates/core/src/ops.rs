@@ -37,6 +37,19 @@ pub async fn create_folder(parent: &Path, name: &str) -> io::Result<PathBuf> {
     Ok(target)
 }
 
+pub async fn create_file(parent: &Path, name: &str) -> io::Result<PathBuf> {
+    let target = parent.join(name);
+    // create_new: errors with AlreadyExists instead of truncating an
+    // existing file — the same never-clobber contract create_folder gets
+    // from create_dir failing on an existing directory.
+    tokio::fs::File::options()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+        .await?;
+    Ok(target)
+}
+
 /// Opens a file with the desktop's default handler for its type. Fires the
 /// launcher and returns immediately — does not wait for the opened
 /// application to exit.

@@ -23,6 +23,31 @@ async fn create_folder_makes_a_new_directory() {
 }
 
 #[tokio::test]
+async fn create_file_makes_a_new_empty_file() {
+    let dir = tempdir().unwrap();
+
+    let created = ops::create_file(dir.path(), "notes.txt").await.unwrap();
+
+    assert!(created.is_file());
+    assert_eq!(created, dir.path().join("notes.txt"));
+    assert_eq!(fs::metadata(&created).unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn create_file_fails_if_the_name_already_exists() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("notes.txt"), b"keep me").unwrap();
+
+    let result = ops::create_file(dir.path(), "notes.txt").await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        fs::read_to_string(dir.path().join("notes.txt")).unwrap(),
+        "keep me"
+    );
+}
+
+#[tokio::test]
 async fn rename_moves_file_to_new_name_in_same_directory() {
     let dir = tempdir().unwrap();
     let original = dir.path().join("old.txt");
