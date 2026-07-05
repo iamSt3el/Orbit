@@ -24,6 +24,14 @@ Window {
     // apart from a genuinely external one — not drop.keys.
     property bool _internalDragActive: false
 
+    // Direction of the most recent navigation — "forward" (into a child),
+    // "back" (up to an ancestor), or "neutral" (sidebar jump, path edit).
+    // Derived from path prefixes in fileModel.onCurrentPathChanged and
+    // consumed by viewEntrance when the listing lands; Rust deliberately
+    // has no direction concept.
+    property string _lastPath: ""
+    property string _navDirection: "neutral"
+
     // A same-named alias, not just "fileModel" — `fileModel` itself is an
     // id, not a property of Window, so `window.fileModel` doesn't exist
     // (silently evaluates to undefined). Any popup below that's created
@@ -56,6 +64,21 @@ Window {
         // editing colors.json while the app is running re-applies the
         // theme automatically, not just at startup.
         onThemeColorsTextChanged: Color.applyCustomColors(fileModel.themeColorsText)
+
+        onCurrentPathChanged: {
+            var oldPath = window._lastPath
+            var newPath = fileModel.currentPath
+            if (oldPath.length === 0) {
+                window._navDirection = "neutral"
+            } else if (newPath.startsWith(oldPath === "/" ? "/" : oldPath + "/")) {
+                window._navDirection = "forward"
+            } else if (oldPath.startsWith(newPath === "/" ? "/" : newPath + "/")) {
+                window._navDirection = "back"
+            } else {
+                window._navDirection = "neutral"
+            }
+            window._lastPath = newPath
+        }
 
         Component.onCompleted: {
             // A singleton (Color.qml) can be instantiated before this
@@ -788,8 +811,77 @@ Window {
                         DecorativeShapesBackground {}
 
                         Loader {
+                            id: viewLoader
                             anchors.fill: parent
                             sourceComponent: fileModel.viewMode === "grid" ? gridComponent : listComponent
+                            transform: Translate { id: viewSlide }
+                            // List↔grid toggle (and first load): the fresh
+                            // view crossfades/scales in instead of snapping.
+                            // At startup this can overlap viewEntrance below;
+                            // both settle at opacity 1 / scale 1, so the race
+                            // is harmless.
+                            onLoaded: viewSwapEntrance.restart()
+                        }
+
+                        // One-shot entrance when a navigation's listing
+                        // lands (isListing flips false) — content slides in
+                        // from the right going deeper, from the left going
+                        // up, plain fade for sidebar jumps. Screen-level
+                        // motion: bezier pairs, not springs. Watcher
+                        // refreshes never touch isListing, so they never
+                        // move the view.
+                        ParallelAnimation {
+                            id: viewEntrance
+                            NumberAnimation {
+                                target: viewSlide
+                                property: "x"
+                                from: window._navDirection === "forward" ? 24
+                                    : window._navDirection === "back" ? -24 : 0
+                                to: 0
+                                duration: Motion.emphasizedDecelerate.duration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Motion.emphasizedDecelerate.bezier
+                            }
+                            NumberAnimation {
+                                target: viewLoader
+                                property: "opacity"
+                                from: 0
+                                to: 1
+                                duration: Motion.emphasizedDecelerate.duration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Motion.emphasizedDecelerate.bezier
+                            }
+                        }
+
+                        ParallelAnimation {
+                            id: viewSwapEntrance
+                            NumberAnimation {
+                                target: viewLoader
+                                property: "opacity"
+                                from: 0
+                                to: 1
+                                duration: Motion.standard.duration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Motion.standard.bezier
+                            }
+                            NumberAnimation {
+                                target: viewLoader
+                                property: "scale"
+                                from: 0.96
+                                to: 1
+                                duration: Motion.standard.duration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Motion.standard.bezier
+                            }
+                        }
+
+                        Connections {
+                            target: fileModel
+                            function onIsListingChanged() {
+                                if (!fileModel.isListing) {
+                                    viewEntrance.restart()
+                                }
+                            }
                         }
 
                         // Loading state — a navigation listing that's
