@@ -14,6 +14,7 @@ Item {
     property bool showBackButton: false
     property string viewMode: "list" // "list" | "grid"
     property var fileModel
+    property bool viewOptionsOpen: false
     signal backClicked
     signal listViewRequested
     signal gridViewRequested
@@ -113,58 +114,15 @@ Item {
             color: Color.scheme.primary
         }
 
-        // View options (hidden files / sort / icon size) — same hover-circle
-        // pattern as the other icon buttons.
-        Item {
-            id: optionsButton
-            Layout.preferredWidth: 40
-            Layout.preferredHeight: 40
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Shape.full
-                color: Elevation.surfaceAt(3)
-                opacity: _optionsArea.containsMouse ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-            }
-
-            Icon {
-                anchors.centerIn: parent
-                content: "tune"
-                iconSize: 20
-                color: Color.scheme.surfaceText
-            }
-
-            MouseArea {
-                id: _optionsArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    var scenePos = optionsButton.mapToItem(null, 0, optionsButton.height)
-                    root.optionsRequested(scenePos.x, scenePos.y)
-                }
-            }
-
-            Tooltip {
-                text: "View options"
-                hovered: _optionsArea.containsMouse
-            }
-        }
-
-        ButtonGroup {
-            id: viewToggle
+        // Split button (roadmap item 10): leading side switches list/grid,
+        // trailing chevron opens View options — replaces the old separate
+        // segmented toggle + tune icon button.
+        SplitButton {
             Layout.preferredHeight: 32
-            iconSize: 16
-            model: [
-                { value: "list", icon: "view_list", tooltip: "List view" },
-                { value: "grid", icon: "grid_view", tooltip: "Grid view" }
-            ]
-            activeCheck: (value) => value === root.viewMode
-            onSegmentClicked: (value) => {
-                if (value === "list") root.listViewRequested()
-                else root.gridViewRequested()
-            }
+            viewMode: root.viewMode
+            menuOpen: root.viewOptionsOpen
+            onToggleRequested: root.viewMode === "grid" ? root.listViewRequested() : root.gridViewRequested()
+            onMenuRequested: (x, y) => root.optionsRequested(x, y)
         }
     }
 }

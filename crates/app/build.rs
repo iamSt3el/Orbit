@@ -55,6 +55,7 @@ fn main() {
                 "qml/components/EmptyState.qml",
                 "qml/components/NewFileDialog.qml",
                 "qml/components/FabMenu.qml",
+                "qml/components/SplitButton.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))

@@ -389,6 +389,7 @@ Window {
                         showBackButton: fileModel.currentPath && fileModel.currentPath !== "/"
                         viewMode: fileModel.viewMode
                         fileModel: fileModel
+                        viewOptionsOpen: viewOptionsMenuLoader.active
                         onBackClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
                         onListViewRequested: {
                             fileModel.viewMode = "list"
