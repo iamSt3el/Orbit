@@ -52,6 +52,7 @@ fn main() {
                 "qml/components/LinearWavyProgressBar.qml",
                 "qml/components/TransferStatus.qml",
                 "qml/components/SelectionToolbar.qml",
+                "qml/components/EmptyState.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))

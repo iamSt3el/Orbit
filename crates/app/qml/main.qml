@@ -909,6 +909,21 @@ Window {
                             onTriggered: elapsed = true
                         }
 
+                        // Empty state — only after a listing has actually
+                        // landed empty (never while the spinner could
+                        // show), keyed off the live view's row count.
+                        EmptyState {
+                            anchors.centerIn: parent
+                            visible: (!fileModel.isListing && viewLoader.item)
+                                ? viewLoader.item.count === 0 : false
+                            // window.fileListModel, not the bare fileModel
+                            // id — this component declares its own
+                            // `property var fileModel` (see the alias
+                            // comment at the top of this file).
+                            fileModel: window.fileListModel
+                            onNewFolderRequested: window.openNewFolderDialog()
+                        }
+
                         Fab {
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
