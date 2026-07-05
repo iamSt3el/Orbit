@@ -143,7 +143,9 @@ Item {
             Layout.preferredWidth: 20
             Layout.preferredHeight: 20
             size: 20
-            visible: root.fileModel && root.fileModel.isBusy
+            // Ternary, not `&&`: with fileModel undefined the && chain
+            // yields undefined itself, which can't assign to a bool.
+            visible: root.fileModel ? root.fileModel.isBusy : false
             running: visible
             color: Color.scheme.primary
         }
