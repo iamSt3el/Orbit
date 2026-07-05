@@ -23,6 +23,37 @@ Rectangle {
     readonly property var pinnedFolders: fileModel && fileModel.pinnedFoldersJoined.length > 0
         ? fileModel.pinnedFoldersJoined.split("\n") : []
 
+    // Mounted volumes (round-2 item 24) — parsed from the model's
+    // volumesText, refreshed on a coarse poll (there's no mount watcher).
+    readonly property var volumes: {
+        if (!fileModel || fileModel.volumesText.length === 0) {
+            return []
+        }
+        var out = []
+        var lines = fileModel.volumesText.split("\n")
+        for (var i = 0; i < lines.length; i++) {
+            var f = lines[i].split("\u001f")
+            if (f.length === 5) {
+                out.push({
+                    label: f[0],
+                    mount: f[1],
+                    total: Number(f[2]),
+                    avail: Number(f[3]),
+                    device: f[4]
+                })
+            }
+        }
+        return out
+    }
+
+    Timer {
+        interval: 10000
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: if (root.fileModel) root.fileModel.refreshVolumes()
+    }
+
     width: 200
     radius: Shape.largeIncreased
     color: Color.scheme.surfaceContainerHigh
@@ -184,6 +215,136 @@ Rectangle {
                                 root.fileModel.navigate(navItem.modelData.path)
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        Text {
+            visible: root.volumes.length > 0
+            text: "Devices"
+            leftPadding: 10
+            topPadding: 14
+            bottomPadding: 10
+            color: Color.scheme.surfaceVariantText
+            font.family: Type.labelMedium.family
+            font.weight: Type.labelMedium.weight
+            font.pixelSize: Type.labelMedium.size
+        }
+
+        Repeater {
+            model: root.volumes
+
+            delegate: Item {
+                id: volItem
+                required property var modelData
+
+                readonly property bool isActive: modelData.mount === root.currentPath
+                readonly property real usedFrac: modelData.total > 0
+                    ? (modelData.total - modelData.avail) / modelData.total : 0
+
+                width: parent.width
+                implicitHeight: 46
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Shape.medium
+                    color: volItem.isActive ? Color.scheme.primary : "transparent"
+                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 8
+
+                        Icon {
+                            content: volItem.modelData.mount === "/" ? "hard_drive" : "usb"
+                            iconSize: 18
+                            color: volItem.isActive ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Column {
+                            width: parent.width - 26 - (ejectButton.visible ? 28 : 0)
+                            spacing: 4
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Text {
+                                width: parent.width
+                                text: volItem.modelData.label
+                                elide: Text.ElideRight
+                                color: volItem.isActive ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
+                                font.family: Type.bodyLarge.family
+                                font.weight: Font.Medium
+                                font.pixelSize: Type.bodyLarge.size
+                            }
+
+                            // Capacity bar: filled fraction = used space.
+                            Rectangle {
+                                width: parent.width
+                                height: 3
+                                radius: Shape.full
+                                color: volItem.isActive
+                                    ? Qt.alpha(Color.scheme.primaryText, 0.3)
+                                    : Elevation.surfaceAt(4)
+
+                                Rectangle {
+                                    width: parent.width * volItem.usedFrac
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: volItem.isActive ? Color.scheme.primaryText : Color.scheme.primary
+                                }
+                            }
+                        }
+
+                        Item {
+                            id: ejectButton
+                            width: 24
+                            height: 24
+                            visible: volItem.modelData.mount !== "/" && _volArea.containsMouse
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: Shape.full
+                                color: Elevation.surfaceAt(3)
+                                opacity: _ejectArea.containsMouse ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                            }
+
+                            Icon {
+                                anchors.centerIn: parent
+                                content: "eject"
+                                iconSize: 14
+                                color: volItem.isActive ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
+                            }
+
+                            MouseArea {
+                                id: _ejectArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.fileModel.ejectVolume(volItem.modelData.device)
+                            }
+
+                            Tooltip {
+                                text: "Eject"
+                                hovered: _ejectArea.containsMouse
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: _volArea
+                        // Below the eject button in z so eject clicks win.
+                        z: -1
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (root.fileModel) root.fileModel.navigate(volItem.modelData.mount)
                     }
                 }
             }

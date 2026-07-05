@@ -87,6 +87,11 @@ pub mod qobject {
         // wherever `displayed` or entry sizes change.
         #[qproperty(i32, displayed_count, cxx_name = "displayedCount")]
         #[qproperty(i64, displayed_total_bytes, cxx_name = "displayedTotalBytes")]
+        // Mounted volumes for the sidebar's Devices section (round-2
+        // item 24): lines of "label\u{1f}mount\u{1f}total\u{1f}avail
+        // \u{1f}device". Refreshed by refreshVolumes() — the sidebar
+        // polls it on a coarse timer; there's no mount watcher.
+        #[qproperty(QString, volumes_text, cxx_name = "volumesText")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -244,6 +249,17 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openEntryWith"]
         fn open_entry_with(self: Pin<&mut FileListModel>, name: &QString, exec: &QString);
+
+        /// Re-reads /proc/mounts into the volumesText property.
+        #[qinvokable]
+        #[cxx_name = "refreshVolumes"]
+        fn refresh_volumes(self: Pin<&mut FileListModel>);
+
+        /// udisksctl-unmounts the device on a background task, surfacing
+        /// failure through the snackbar and refreshing the volume list.
+        #[qinvokable]
+        #[cxx_name = "ejectVolume"]
+        fn eject_volume(self: Pin<&mut FileListModel>, device: &QString);
     }
 
     unsafe extern "RustQt" {
@@ -611,6 +627,8 @@ pub struct FileListModelRust {
     /// Backing for the status-line qproperties — see sync_listing_stats().
     displayed_count: i32,
     displayed_total_bytes: i64,
+    /// Backing for the volumesText qproperty — see refresh_volumes().
+    volumes_text: QString,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -679,6 +697,7 @@ impl Default for FileListModelRust {
             can_go_forward: false,
             displayed_count: 0,
             displayed_total_bytes: 0,
+            volumes_text: QString::from(""),
         }
     }
 }
@@ -1099,6 +1118,43 @@ impl qobject::FileListModel {
                 exec.to_string()
             )));
         }
+    }
+
+    fn refresh_volumes(mut self: core::pin::Pin<&mut Self>) {
+        let lines: Vec<String> = fm_core::volumes::list_volumes()
+            .into_iter()
+            .map(|v| {
+                format!(
+                    "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+                    v.label,
+                    v.mount_point.display(),
+                    v.total_bytes,
+                    v.avail_bytes,
+                    v.device
+                )
+            })
+            .collect();
+        let joined = QString::from(&lines.join("\n"));
+        if self.volumes_text != joined {
+            self.as_mut().set_volumes_text(joined);
+        }
+    }
+
+    fn eject_volume(mut self: core::pin::Pin<&mut Self>, device: &QString) {
+        let device = device.to_string();
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let result = fm_core::volumes::eject(&device).await;
+            let _ = qt_thread.queue(move |mut model| {
+                if let Err(e) = result {
+                    eprintln!("eject failed for {device}: {e}");
+                    model
+                        .as_mut()
+                        .error_occurred(QString::from(&format!("Couldn't eject: {e}")));
+                }
+                model.as_mut().refresh_volumes();
+            });
+        });
     }
 
     fn open_selected_entry(mut self: core::pin::Pin<&mut Self>) {
