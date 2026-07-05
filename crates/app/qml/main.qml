@@ -319,7 +319,13 @@ Window {
     Shortcut {
         sequences: [StandardKey.Cancel]
         onActivated: {
-            if (!window.anyPopupOpen) {
+            if (window.anyPopupOpen) return
+            // FabMenu can't own its own Cancel Shortcut — two enabled
+            // shortcuts on one sequence are ambiguous in Qt and neither
+            // fires — so the window-level one dismisses it first.
+            if (fabMenu.expanded) {
+                fabMenu.dismiss()
+            } else {
                 fileModel.clearSelection()
             }
         }
@@ -1000,11 +1006,19 @@ Window {
                             onNewFolderRequested: window.openNewFolderDialog()
                         }
 
-                        Fab {
+                        FabMenu {
+                            id: fabMenu
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
                             anchors.margins: 20
-                            onClicked: window.openNewFolderDialog()
+                            // window.fileListModel, not the bare fileModel
+                            // id — this component declares its own
+                            // `property var fileModel` (see the alias
+                            // comment at the top of this file).
+                            fileModel: window.fileListModel
+                            onNewFolderRequested: window.openNewFolderDialog()
+                            onNewFileRequested: window.openNewFileDialog()
+                            onPasteRequested: fileModel.pasteEntry()
                         }
 
                         // Contextual floating toolbar for bulk actions —
