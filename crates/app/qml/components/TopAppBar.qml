@@ -17,9 +17,11 @@ Item {
     property bool viewOptionsOpen: false
     property bool canGoBack: false
     property bool canGoForward: false
+    property bool previewOpen: false
     signal backClicked
     signal forwardClicked
     signal upClicked
+    signal previewToggled
     signal listViewRequested
     signal gridViewRequested
     signal optionsRequested(real x, real y)
@@ -144,6 +146,13 @@ Item {
             visible: root.fileModel && root.fileModel.isBusy
             running: visible
             color: Color.scheme.primary
+        }
+
+        // Preview pane toggle (round-2 item 22).
+        NavButton {
+            icon: "info"
+            tip: root.previewOpen ? "Hide preview (F9)" : "Show preview (F9)"
+            onActivated: root.previewToggled()
         }
 
         // Split button (roadmap item 10): leading side switches list/grid,

@@ -223,6 +223,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "typeAhead"]
         fn type_ahead(self: Pin<&mut FileListModel>, prefix: &QString) -> i32;
+
+        /// Metadata for the preview pane (round-2 item 22), joined with
+        /// the ASCII unit separator \u{1f}: isDir("1"/"0"), size, modified
+        /// (ISO-8601), mimeType, permissions, iconKey. Empty string when
+        /// the name isn't in the current listing.
+        #[qinvokable]
+        #[cxx_name = "entryInfoJoined"]
+        fn entry_info_joined(self: &FileListModel, name: &QString) -> QString;
     }
 
     unsafe extern "RustQt" {
@@ -1039,6 +1047,22 @@ impl qobject::FileListModel {
             self.as_mut().set_selected(&name_q, true);
         }
         row
+    }
+
+    fn entry_info_joined(&self, name: &QString) -> QString {
+        let n = name.to_string();
+        let Some(entry) = self.entries.iter().find(|e| e.name == n) else {
+            return QString::from("");
+        };
+        let fields = [
+            if entry.is_dir { "1" } else { "0" }.to_string(),
+            entry.size.to_string(),
+            format_modified(entry.modified),
+            entry.mime_type.clone(),
+            entry.permissions.clone(),
+            entry.icon_key.clone(),
+        ];
+        QString::from(&fields.join("\u{1f}"))
     }
 
     fn open_selected_entry(mut self: core::pin::Pin<&mut Self>) {

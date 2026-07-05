@@ -57,6 +57,7 @@ fn main() {
                 "qml/components/FabMenu.qml",
                 "qml/components/SplitButton.qml",
                 "qml/components/PinnedContextMenu.qml",
+                "qml/components/PreviewPane.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))

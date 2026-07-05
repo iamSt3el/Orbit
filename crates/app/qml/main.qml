@@ -94,6 +94,10 @@ Window {
         fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
     }
 
+    // Preview pane visibility (round-2 item 22) — session-only state,
+    // toggled by F9 or the header's info button.
+    property bool previewVisible: false
+
     // Direction of the most recent navigation — "forward" (into a child),
     // "back" (up to an ancestor), or "neutral" (sidebar jump, path edit).
     // Derived from path prefixes in fileModel.onCurrentPathChanged and
@@ -438,6 +442,14 @@ Window {
     }
 
     Shortcut {
+        sequence: "F9"
+        onActivated: {
+            if (window.anyPopupOpen) return
+            window.previewVisible = !window.previewVisible
+        }
+    }
+
+    Shortcut {
         sequences: [StandardKey.Cancel]
         onActivated: {
             if (window.anyPopupOpen) return
@@ -531,6 +543,8 @@ Window {
                         viewOptionsOpen: viewOptionsMenuLoader.active
                         canGoBack: fileModel.canGoBack
                         canGoForward: fileModel.canGoForward
+                        previewOpen: window.previewVisible
+                        onPreviewToggled: window.previewVisible = !window.previewVisible
                         onBackClicked: fileModel.goBack()
                         onForwardClicked: fileModel.goForward()
                         onUpClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
@@ -1430,6 +1444,23 @@ Window {
                             }
                         }
                     }
+                }
+
+                // Preview/details pane (round-2 item 22) — F9 or the
+                // header's info button.
+                PreviewPane {
+                    visible: window.previewVisible
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: 260
+                    Layout.topMargin: 10
+                    Layout.bottomMargin: 10
+                    Layout.rightMargin: 10
+                    // window.fileListModel, not the bare fileModel id —
+                    // this component declares its own `property var
+                    // fileModel` (see the alias comment above).
+                    fileModel: window.fileListModel
+                    entryName: fileModel && fileModel.selectionCount === 1
+                        ? fileModel.singleSelectedName() : ""
                 }
             }
         }
