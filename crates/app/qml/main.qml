@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
+import "util/format.js" as Format
 import com.filemanager.app 1.0
 
 Window {
@@ -1241,6 +1242,35 @@ Window {
                             fileModel: window.fileListModel
                             onDeleteRequested: (count) => window.openDeleteSelectionConfirmDialog(count)
                             onDeletePermanentlyRequested: (count) => window.openDeletePermanentlySelectionConfirmDialog(count)
+                        }
+                    }
+
+                    // Status line (round-2 item 16): a quiet summary of
+                    // what the view shows and what's selected.
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 24
+                        Layout.minimumHeight: 24
+                        Layout.maximumHeight: 24
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Color.scheme.surfaceVariantText
+                            font.family: Type.labelMedium.family
+                            font.weight: Type.labelMedium.weight
+                            font.pixelSize: Type.labelMedium.size
+                            text: {
+                                var t = Format.formatItemCount(fileModel.displayedCount)
+                                if (fileModel.displayedTotalBytes > 0) {
+                                    t += " · " + Format.formatBytes(fileModel.displayedTotalBytes)
+                                }
+                                if (fileModel.selectionCount > 0) {
+                                    t += " · " + fileModel.selectionCount + " selected"
+                                }
+                                return t
+                            }
                         }
                     }
                 }

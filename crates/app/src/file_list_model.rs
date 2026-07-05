@@ -81,6 +81,12 @@ pub mod qobject {
         // header's back/forward button enablement.
         #[qproperty(bool, can_go_back, cxx_name = "canGoBack")]
         #[qproperty(bool, can_go_forward, cxx_name = "canGoForward")]
+        // Status-line stats (roadmap round-2 item 16): how many rows the
+        // view currently shows and their total file size (directories
+        // count as 0 — no recursive walk). Synced by sync_listing_stats()
+        // wherever `displayed` or entry sizes change.
+        #[qproperty(i32, displayed_count, cxx_name = "displayedCount")]
+        #[qproperty(i64, displayed_total_bytes, cxx_name = "displayedTotalBytes")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -581,6 +587,9 @@ pub struct FileListModelRust {
     /// Backing for the canGoBack/canGoForward qproperties.
     can_go_back: bool,
     can_go_forward: bool,
+    /// Backing for the status-line qproperties — see sync_listing_stats().
+    displayed_count: i32,
+    displayed_total_bytes: i64,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -647,6 +656,8 @@ impl Default for FileListModelRust {
             history_navigating: false,
             can_go_back: false,
             can_go_forward: false,
+            displayed_count: 0,
+            displayed_total_bytes: 0,
         }
     }
 }
@@ -908,6 +919,31 @@ impl qobject::FileListModel {
             .map(|&i| self.entries[i].name.clone())
     }
 
+    /// Mirrors the displayed listing's row count and total file size into
+    /// the status-line qproperties (round-2 item 16) — called wherever
+    /// `displayed` membership or entry sizes change.
+    fn sync_listing_stats(mut self: core::pin::Pin<&mut Self>) {
+        let count = self.displayed.len() as i32;
+        let total: i64 = self
+            .displayed
+            .iter()
+            .map(|&i| {
+                let e = &self.entries[i];
+                if e.is_dir {
+                    0
+                } else {
+                    e.size as i64
+                }
+            })
+            .sum();
+        if self.displayed_count != count {
+            self.as_mut().set_displayed_count(count);
+        }
+        if self.displayed_total_bytes != total {
+            self.as_mut().set_displayed_total_bytes(total);
+        }
+    }
+
     /// Re-clamps the cursor after `displayed` changed shape (filter
     /// toggles, watcher diffs). The cursor may land on a different file
     /// than before — acceptable; it must just never point outside the
@@ -1065,6 +1101,7 @@ impl qobject::FileListModel {
         self.as_mut().set_search_active(false);
         self.as_mut().set_cursor_row(-1);
         self.as_mut().rust_mut().cursor_anchor_row = -1;
+        self.as_mut().sync_listing_stats();
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
         self.save_settings();
@@ -1090,6 +1127,7 @@ impl qobject::FileListModel {
                 model.as_mut().rust_mut().entries = entries;
                 model.as_mut().rust_mut().rebuild_displayed();
                 model.as_mut().end_reset_model();
+                model.as_mut().sync_listing_stats();
                 // After the stale-guard on purpose: a superseded
                 // listing must not clear a newer navigation's flag.
                 // Every non-stale listing — success, empty dir, or
@@ -1211,6 +1249,7 @@ impl qobject::FileListModel {
         let active = !query.to_string().is_empty();
         self.as_mut().set_search_active(active);
         self.as_mut().clamp_cursor();
+        self.as_mut().sync_listing_stats();
     }
 
     fn set_show_hidden(mut self: core::pin::Pin<&mut Self>, show_hidden: bool) {
@@ -1219,6 +1258,7 @@ impl qobject::FileListModel {
         self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
         self.as_mut().clamp_cursor();
+        self.as_mut().sync_listing_stats();
     }
 
     fn set_sort_key(mut self: core::pin::Pin<&mut Self>, sort_key: &QString) {
@@ -1479,6 +1519,7 @@ impl qobject::FileListModel {
             self.as_mut().rust_mut().rebuild_displayed();
             self.as_mut().end_reset_model();
             self.as_mut().clamp_cursor();
+            self.as_mut().sync_listing_stats();
             return;
         }
 
@@ -1560,6 +1601,7 @@ impl qobject::FileListModel {
         }
 
         self.as_mut().clamp_cursor();
+        self.as_mut().sync_listing_stats();
     }
 
     fn open_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
