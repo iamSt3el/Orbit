@@ -118,9 +118,17 @@ Window {
     // had, so every binding in this file retargets reactively on tab
     // switch). initialTabModel below is tab 0 — it also owns the
     // one-per-app duties (theme watch, startup navigation).
-    property var _tabModels: [initialTabModel]
+    // Starts EMPTY and is assigned in initialTabModel.Component.onCompleted
+    // — an id referenced inside a property-initializer binding resolves to
+    // undefined (the object doesn't exist yet during the Window's property
+    // init) and the binding never re-evaluates, which left fileModel
+    // permanently undefined: blank path bar, dead nav buttons, inert
+    // sidebar. A real assignment notifies, so fileModel and everything
+    // bound to it snaps alive the moment the model exists.
+    property var _tabModels: []
     property int _currentTab: 0
-    readonly property var fileModel: _tabModels[Math.min(_currentTab, _tabModels.length - 1)]
+    readonly property var fileModel: _tabModels.length > 0
+        ? _tabModels[Math.min(_currentTab, _tabModels.length - 1)] : null
 
     Component {
         id: tabModelComponent
@@ -172,7 +180,7 @@ Window {
         large: { listIcon: 28, listContainer: 48, gridIcon: 40, gridContainer: 68, gridCell: 160, gridMinWidth: 132 },
         extraLarge: { listIcon: 36, listContainer: 56, gridIcon: 48, gridContainer: 80, gridCell: 188, gridMinWidth: 150 }
     })
-    readonly property var activeIconProfile: iconSizeProfiles[fileModel.iconSizeLevel] || iconSizeProfiles.medium
+    readonly property var activeIconProfile: (fileModel && iconSizeProfiles[fileModel.iconSizeLevel]) || iconSizeProfiles.medium
 
     // Direction tracking follows the ACTIVE tab: Connections re-targets
     // when window.fileModel changes. A tab switch itself changes
@@ -207,18 +215,22 @@ Window {
         onThemeColorsTextChanged: Color.applyCustomColors(initialTabModel.themeColorsText)
 
         Component.onCompleted: {
+            // Register as tab 0 FIRST — window.fileModel resolves through
+            // _tabModels (see its comment), so this assignment is what
+            // brings the whole UI's bindings alive.
+            window._tabModels = [initialTabModel]
             // A singleton (Color.qml) can be instantiated before this
             // object exists, so it can't read the theme file itself —
             // this is Rust-side file I/O (see FileListModel.
-            // startThemeColorsWatch()), not QML XHR, now that fileModel
+            // startThemeColorsWatch()), not QML XHR, now that the model
             // is ready.
-            fileModel.startThemeColorsWatch()
+            initialTabModel.startThemeColorsWatch()
             // CLI arg wins if given; otherwise resume wherever the last
             // session left off (if that's enabled in Settings); otherwise
             // fall back to home.
             var startPath = Qt.application.arguments.length > 1
                 ? Qt.application.arguments[1]
-                : (fileModel.resumeLastPath && fileModel.savedLastPath.length > 0 ? fileModel.savedLastPath : "/home")
+                : (initialTabModel.resumeLastPath && initialTabModel.savedLastPath.length > 0 ? initialTabModel.savedLastPath : "/home")
             navigate(startPath)
         }
     }
