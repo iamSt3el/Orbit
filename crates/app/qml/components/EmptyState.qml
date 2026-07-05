@@ -63,12 +63,27 @@ Item {
         id: _column
         spacing: 8
 
-        MaterialShapes.ShapeCanvas {
+        Item {
             width: 160
             height: 160
             anchors.horizontalCenter: parent.horizontalCenter
-            color: Qt.alpha(Color.scheme.primary, 0.10)
-            roundedPolygon: MaterialShapesFn.getCookie12Sided()
+
+            MaterialShapes.ShapeCanvas {
+                anchors.fill: parent
+                color: Qt.alpha(Color.scheme.primary, 0.10)
+                roundedPolygon: MaterialShapesFn.getCookie12Sided()
+            }
+
+            // A variant glyph inside the shape: what kind of "nothing"
+            // this is, at a glance.
+            Icon {
+                anchors.centerIn: parent
+                content: root.searchVariant ? "search_off"
+                    : root.trashVariant ? "delete"
+                    : "folder_open"
+                iconSize: 64
+                color: Color.scheme.primary
+            }
         }
 
         Text {
