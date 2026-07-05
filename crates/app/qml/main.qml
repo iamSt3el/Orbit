@@ -792,6 +792,31 @@ Window {
                             sourceComponent: fileModel.viewMode === "grid" ? gridComponent : listComponent
                         }
 
+                        // Loading state — a navigation listing that's
+                        // actually taking a while shows the shape-morph
+                        // loader centered in the otherwise-empty view,
+                        // disambiguating "still listing" from "empty
+                        // folder". The 150ms gate keeps fast local listings
+                        // from flashing it. isListing is only ever true for
+                        // navigate() listings, never watcher refreshes, so
+                        // this can't appear over existing rows.
+                        ShapeLoader {
+                            anchors.centerIn: parent
+                            size: 48
+                            color: Color.scheme.primary
+                            visible: fileModel.isListing && _listingSpinnerGate.elapsed
+                            running: visible
+                        }
+
+                        Timer {
+                            id: _listingSpinnerGate
+                            property bool elapsed: false
+                            interval: 150
+                            running: fileModel.isListing
+                            onRunningChanged: if (running) elapsed = false
+                            onTriggered: elapsed = true
+                        }
+
                         Fab {
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
