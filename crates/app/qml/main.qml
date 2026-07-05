@@ -346,6 +346,7 @@ Window {
         renameDialogLoader.active || propertiesDialogLoader.active ||
         deleteConfirmDialogLoader.active || trashContextMenuLoader.active ||
         pinnedContextMenuLoader.active || openWithDialogLoader.active ||
+        conflictDialogLoader.active ||
         emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active ||
         deletePermanentlyConfirmDialogLoader.active
 
@@ -1702,6 +1703,20 @@ Window {
         function onErrorOccurred(message) { snackbar.show(message) }
         function onOperationCompleted(description, canUndo) {
             snackbar.show(description, canUndo ? "Undo" : "")
+        }
+        function onConflictsDetected(names, count) {
+            conflictDialogLoader.active = true
+            conflictDialogLoader.item.open(names, count)
+        }
+    }
+
+    Loader {
+        id: conflictDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: ConflictDialog {
+            onResolved: (mode) => fileModel.resolveConflicts(mode)
+            onClosed: Qt.callLater(() => conflictDialogLoader.active = false)
         }
     }
 

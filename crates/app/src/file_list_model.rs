@@ -424,6 +424,19 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "operationCompleted"]
         fn operation_completed(self: Pin<&mut FileListModel>, description: QString, can_undo: bool);
+
+        /// A paste/drop found existing names at the destination (round-2
+        /// item 15). The transfer is parked until resolveConflicts()
+        /// picks a mode; `names` is newline-joined.
+        #[qsignal]
+        #[cxx_name = "conflictsDetected"]
+        fn conflicts_detected(self: Pin<&mut FileListModel>, names: QString, count: i32);
+
+        /// Resumes (or cancels) the transfer parked by conflictsDetected.
+        /// mode: "replace" | "skip" | "keepBoth" | "cancel".
+        #[qinvokable]
+        #[cxx_name = "resolveConflicts"]
+        fn resolve_conflicts(self: Pin<&mut FileListModel>, mode: &QString);
     }
 
     unsafe extern "RustQt" {
@@ -629,6 +642,32 @@ pub struct FileListModelRust {
     displayed_total_bytes: i64,
     /// Backing for the volumesText qproperty — see refresh_volumes().
     volumes_text: QString,
+    /// A paste/drop parked by the conflict pre-scan (round-2 item 15),
+    /// waiting for resolveConflicts() to pick a mode.
+    pending_transfer: Option<PendingTransfer>,
+}
+
+/// The arguments transfer_batch was called with, parked while the
+/// conflict dialog is up.
+struct PendingTransfer {
+    sources: Vec<PathBuf>,
+    dest_dir: PathBuf,
+    is_move: bool,
+    verb: &'static str,
+}
+
+/// How run_transfer_batch treats a destination name that already exists.
+#[derive(Clone, Copy, PartialEq)]
+enum ConflictMode {
+    /// Pick a unique "name (2)"-style destination — the historical
+    /// default behavior.
+    KeepBoth,
+    /// Trash the existing destination first, then transfer under the
+    /// plain name. (The trashed original is recoverable from Trash but
+    /// not part of the batch's undo record.)
+    Replace,
+    /// Leave conflicting sources untransferred.
+    Skip,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -698,6 +737,7 @@ impl Default for FileListModelRust {
             displayed_count: 0,
             displayed_total_bytes: 0,
             volumes_text: QString::from(""),
+            pending_transfer: None,
         }
     }
 }
@@ -2093,17 +2133,81 @@ impl qobject::FileListModel {
         });
     }
 
-    /// Shared copy/move-with-progress batch machinery for both pasteEntry
-    /// (sources from clipboard_paths) and dropPaths (sources from a
-    /// drag-and-drop). `verb` only affects the dev-facing eprintln! label
-    /// and the user-facing batch error message (e.g. "paste" keeps
-    /// pasteEntry's existing wording; dropPaths passes "move" or "copy").
+    /// Conflict pre-scan (round-2 item 15): a transfer whose destination
+    /// already holds any of the incoming names is parked and surfaced via
+    /// conflictsDetected for the dialog to resolve; conflict-free batches
+    /// run immediately. A source already sitting at its own destination
+    /// (pasting a copy into its own folder) is NOT a conflict — that's
+    /// the classic duplicate gesture and stays keep-both.
     fn transfer_batch(
         mut self: core::pin::Pin<&mut Self>,
         sources: Vec<PathBuf>,
         dest_dir: PathBuf,
         is_move: bool,
         verb: &'static str,
+    ) {
+        let conflicts: Vec<String> = sources
+            .iter()
+            .filter_map(|src| {
+                let name = src.file_name()?;
+                let dest = dest_dir.join(name);
+                if dest == *src {
+                    return None;
+                }
+                std::fs::symlink_metadata(&dest)
+                    .is_ok()
+                    .then(|| name.to_string_lossy().into_owned())
+            })
+            .collect();
+        if conflicts.is_empty() {
+            self.run_transfer_batch(sources, dest_dir, is_move, verb, ConflictMode::KeepBoth);
+            return;
+        }
+        let count = conflicts.len() as i32;
+        self.as_mut().rust_mut().pending_transfer = Some(PendingTransfer {
+            sources,
+            dest_dir,
+            is_move,
+            verb,
+        });
+        self.as_mut()
+            .conflicts_detected(QString::from(&conflicts.join("\n")), count);
+    }
+
+    fn resolve_conflicts(mut self: core::pin::Pin<&mut Self>, mode: &QString) {
+        let Some(pending) = self.as_mut().rust_mut().pending_transfer.take() else {
+            return;
+        };
+        let mode = match mode.to_string().as_str() {
+            "replace" => ConflictMode::Replace,
+            "skip" => ConflictMode::Skip,
+            "keepBoth" => ConflictMode::KeepBoth,
+            // "cancel" (or anything unrecognized): drop the parked
+            // transfer. A cancelled cut-paste's clipboard was already
+            // consumed — re-cut to try again.
+            _ => return,
+        };
+        self.run_transfer_batch(
+            pending.sources,
+            pending.dest_dir,
+            pending.is_move,
+            pending.verb,
+            mode,
+        );
+    }
+
+    /// Shared copy/move-with-progress batch machinery for both pasteEntry
+    /// (sources from clipboard_paths) and dropPaths (sources from a
+    /// drag-and-drop). `verb` only affects the dev-facing eprintln! label
+    /// and the user-facing batch error message (e.g. "paste" keeps
+    /// pasteEntry's existing wording; dropPaths passes "move" or "copy").
+    fn run_transfer_batch(
+        mut self: core::pin::Pin<&mut Self>,
+        sources: Vec<PathBuf>,
+        dest_dir: PathBuf,
+        is_move: bool,
+        verb: &'static str,
+        conflict_mode: ConflictMode,
     ) {
         self.as_mut().set_is_busy(true);
         self.as_mut().set_busy_label(QString::from(if is_move {
@@ -2177,7 +2281,34 @@ impl qobject::FileListModel {
                 let Some(file_name) = src.file_name().map(|n| n.to_os_string()) else {
                     continue;
                 };
-                let dest = unique_paste_destination(&dest_dir, std::path::Path::new(&file_name));
+                let plain_dest = dest_dir.join(&file_name);
+                let occupied = plain_dest != src
+                    && tokio::fs::symlink_metadata(&plain_dest).await.is_ok();
+                let dest = match conflict_mode {
+                    _ if !occupied => {
+                        // unique_paste_destination also covers the
+                        // paste-into-own-folder duplicate case.
+                        unique_paste_destination(&dest_dir, std::path::Path::new(&file_name))
+                    }
+                    ConflictMode::KeepBoth => {
+                        unique_paste_destination(&dest_dir, std::path::Path::new(&file_name))
+                    }
+                    ConflictMode::Skip => continue,
+                    ConflictMode::Replace => {
+                        // Trash (never permanently delete) the occupant
+                        // first; a failed trash skips this item rather
+                        // than risking a mid-write collision.
+                        if let Err(e) = fm_core::trash::move_to_trash(&plain_dest).await {
+                            eprintln!(
+                                "replace: couldn't trash {}: {e}",
+                                plain_dest.display()
+                            );
+                            failed += 1;
+                            continue;
+                        }
+                        plain_dest
+                    }
+                };
                 let result = if is_move {
                     fm_core::ops::move_entry_with_progress(
                         &src,
