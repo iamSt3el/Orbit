@@ -82,7 +82,15 @@ Item {
 
         Rectangle {
             anchors.fill: parent
-            radius: Shape.medium
+            // Selection rounds the corners (roadmap item 11) — a whisper
+            // of the removed selection badge, spring per the motion rule.
+            radius: root.selected ? Shape.extraLarge : Shape.medium
+            Behavior on radius {
+                SpringAnimation {
+                    spring: Motion.springStandard.spring
+                    damping: Motion.springStandard.damping
+                }
+            }
             color: Color.scheme.secondaryContainer
             opacity: root.selected ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
