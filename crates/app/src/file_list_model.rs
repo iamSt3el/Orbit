@@ -53,6 +53,12 @@ pub mod qobject {
         // hides itself off it. Kept in sync by sync_selection_count(),
         // which every mutation of `selected` must call.
         #[qproperty(i32, selection_count, cxx_name = "selectionCount")]
+        // True while an async navigate() listing is in flight and the
+        // view is therefore empty — drives the loading state in
+        // main.qml. Watcher-driven refreshes (refresh_entries_diff)
+        // never set it: the view isn't empty during a refresh, so no
+        // loading indicator belongs there.
+        #[qproperty(bool, is_listing, cxx_name = "isListing")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -481,6 +487,8 @@ pub struct FileListModelRust {
     /// (or a newer refresh superseded it) is discarded instead of
     /// clobbering the newer state.
     listing_generation: u64,
+    /// Backing for the isListing qproperty — see navigate().
+    is_listing: bool,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -536,6 +544,7 @@ impl Default for FileListModelRust {
             journal: UndoJournal::default(),
             displayed: Vec::new(),
             listing_generation: 0,
+            is_listing: false,
         }
     }
 }
@@ -829,6 +838,7 @@ impl qobject::FileListModel {
             .set_current_path(QString::from(&path_buf.display().to_string()));
         self.save_settings();
         self.as_mut().start_dir_watch();
+        self.as_mut().set_is_listing(true);
 
         let generation = {
             let mut state = self.as_mut().rust_mut();
@@ -849,6 +859,11 @@ impl qobject::FileListModel {
                 model.as_mut().rust_mut().entries = entries;
                 model.as_mut().rust_mut().rebuild_displayed();
                 model.as_mut().end_reset_model();
+                // After the stale-guard on purpose: a superseded
+                // listing must not clear a newer navigation's flag.
+                // Every non-stale listing — success, empty dir, or
+                // unreadable dir — reaches this line.
+                model.as_mut().set_is_listing(false);
             });
         });
     }
