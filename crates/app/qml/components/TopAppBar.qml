@@ -15,12 +15,58 @@ Item {
     property string viewMode: "list" // "list" | "grid"
     property var fileModel
     property bool viewOptionsOpen: false
+    property bool canGoBack: false
+    property bool canGoForward: false
     signal backClicked
+    signal forwardClicked
+    signal upClicked
     signal listViewRequested
     signal gridViewRequested
     signal optionsRequested(real x, real y)
 
     height: 56
+
+    // The hover-circle icon-button pattern shared by the nav cluster —
+    // icon as a sibling of the highlight (see the old back button's
+    // comment), plus a disabled look for history edges.
+    component NavButton: Item {
+        id: nav
+        property string icon: ""
+        property string tip: ""
+        property bool available: true
+        signal activated()
+        Layout.preferredWidth: 40
+        Layout.preferredHeight: 40
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Shape.full
+            color: Elevation.surfaceAt(3)
+            opacity: (_navArea.containsMouse && nav.available) ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        }
+
+        Icon {
+            anchors.centerIn: parent
+            content: nav.icon
+            iconSize: 20
+            color: Color.scheme.surfaceText
+            opacity: nav.available ? 1 : 0.35
+        }
+
+        MouseArea {
+            id: _navArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: nav.available ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: if (nav.available) nav.activated()
+        }
+
+        Tooltip {
+            text: nav.tip
+            hovered: _navArea.containsMouse
+        }
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -28,43 +74,29 @@ Item {
         anchors.rightMargin: 16
         spacing: 8
 
-        // Back button — the icon itself is a sibling of the hover-highlight
-        // circle, not its child, so it stays visible when the highlight's
-        // opacity is 0 (an icon nested inside an opacity-animated parent
-        // fades with it, which made the button invisible until hovered).
-        Item {
-            id: backButton
-            Layout.preferredWidth: 48
-            Layout.preferredHeight: 48
-            visible: root.showBackButton
+        // Browser-style navigation cluster (roadmap item 14): back and
+        // forward walk the history stacks; up goes to the parent folder
+        // (the old back button's job). Disabled ends stay visible so the
+        // header doesn't reflow as history changes.
+        NavButton {
+            icon: "arrow_back"
+            tip: "Back"
+            available: root.canGoBack
+            onActivated: root.backClicked()
+        }
 
-            Rectangle {
-                anchors.fill: parent
-                radius: Shape.full
-                color: Elevation.surfaceAt(3)
-                opacity: _backArea.containsMouse ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-            }
+        NavButton {
+            icon: "arrow_forward"
+            tip: "Forward"
+            available: root.canGoForward
+            onActivated: root.forwardClicked()
+        }
 
-            Icon {
-                anchors.centerIn: parent
-                content: "arrow_back"
-                iconSize: 22
-                color: Color.scheme.surfaceText
-            }
-
-            MouseArea {
-                id: _backArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.backClicked()
-            }
-
-            Tooltip {
-                text: "Back"
-                hovered: root.showBackButton && _backArea.containsMouse
-            }
+        NavButton {
+            icon: "arrow_upward"
+            tip: "Up"
+            available: root.showBackButton
+            onActivated: root.upClicked()
         }
 
         // A flexible spacer on each side of PathBar, equal weight, is what

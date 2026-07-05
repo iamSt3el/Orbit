@@ -77,6 +77,10 @@ pub mod qobject {
         // setCursor/typeAhead below are the only writers besides the
         // clamping in navigate() and the displayed-mutation paths.
         #[qproperty(i32, cursor_row, cxx_name = "cursorRow")]
+        // Browser-style navigation history (roadmap item 14) — drives the
+        // header's back/forward button enablement.
+        #[qproperty(bool, can_go_back, cxx_name = "canGoBack")]
+        #[qproperty(bool, can_go_forward, cxx_name = "canGoForward")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -148,6 +152,15 @@ pub mod qobject {
     unsafe extern "RustQt" {
         #[qinvokable]
         fn navigate(self: Pin<&mut FileListModel>, path: &QString);
+
+        /// Browser-style history back — no-op when the stack is empty.
+        #[qinvokable]
+        #[cxx_name = "goBack"]
+        fn go_back(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "goForward"]
+        fn go_forward(self: Pin<&mut FileListModel>);
     }
 
     unsafe extern "RustQt" {
@@ -556,6 +569,18 @@ pub struct FileListModelRust {
     /// Where Shift+arrow extension anchors from — the row the cursor last
     /// landed on via a non-extending move/click. Displayed-row index.
     cursor_anchor_row: i32,
+    /// Browser-style history: paths behind/ahead of current_path. A fresh
+    /// navigate() pushes the old path onto back and clears forward;
+    /// go_back/go_forward move current_path between the stacks without
+    /// re-recording (see history_navigating).
+    history_back: Vec<String>,
+    history_forward: Vec<String>,
+    /// True only while go_back/go_forward drive navigate(), so that
+    /// history-driven navigation doesn't push onto the back stack itself.
+    history_navigating: bool,
+    /// Backing for the canGoBack/canGoForward qproperties.
+    can_go_back: bool,
+    can_go_forward: bool,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -617,6 +642,11 @@ impl Default for FileListModelRust {
             pinned_folders_joined: QString::from(&settings.pinned_folders.join("\n")),
             cursor_row: -1,
             cursor_anchor_row: -1,
+            history_back: Vec::new(),
+            history_forward: Vec::new(),
+            history_navigating: false,
+            can_go_back: false,
+            can_go_forward: false,
         }
     }
 }
@@ -1000,6 +1030,25 @@ impl qobject::FileListModel {
     fn navigate(mut self: core::pin::Pin<&mut Self>, path: &QString) {
         let path_buf = PathBuf::from(path.to_string());
 
+        // History recording (roadmap item 14): a fresh navigation pushes
+        // the folder we're leaving onto the back stack and discards the
+        // forward branch — the standard browser rule. History-driven
+        // navigations (go_back/go_forward) manage the stacks themselves
+        // and suppress this via history_navigating.
+        let new_path = path_buf.display().to_string();
+        let old_path = self.current_path.to_string();
+        if !self.history_navigating && !old_path.is_empty() && old_path != new_path {
+            {
+                let mut state = self.as_mut().rust_mut();
+                state.history_back.push(old_path);
+                if state.history_back.len() > 100 {
+                    state.history_back.remove(0);
+                }
+                state.history_forward.clear();
+            }
+            self.as_mut().sync_history_props();
+        }
+
         // Clearing the entries immediately isn't just cosmetic: currentPath
         // updates right away, so leaving the old directory's rows visible
         // would let a click/drop during the load act on old names resolved
@@ -1048,6 +1097,49 @@ impl qobject::FileListModel {
                 model.as_mut().set_is_listing(false);
             });
         });
+    }
+
+    /// Mirrors the history stacks into the canGoBack/canGoForward
+    /// qproperties — called after every stack mutation.
+    fn sync_history_props(mut self: core::pin::Pin<&mut Self>) {
+        let back = !self.history_back.is_empty();
+        let forward = !self.history_forward.is_empty();
+        if self.can_go_back != back {
+            self.as_mut().set_can_go_back(back);
+        }
+        if self.can_go_forward != forward {
+            self.as_mut().set_can_go_forward(forward);
+        }
+    }
+
+    fn go_back(mut self: core::pin::Pin<&mut Self>) {
+        let Some(target) = self.as_mut().rust_mut().history_back.pop() else {
+            return;
+        };
+        let current = self.current_path.to_string();
+        if !current.is_empty() {
+            self.as_mut().rust_mut().history_forward.push(current);
+        }
+        self.as_mut().rust_mut().history_navigating = true;
+        let target_q = QString::from(&target);
+        self.as_mut().navigate(&target_q);
+        self.as_mut().rust_mut().history_navigating = false;
+        self.as_mut().sync_history_props();
+    }
+
+    fn go_forward(mut self: core::pin::Pin<&mut Self>) {
+        let Some(target) = self.as_mut().rust_mut().history_forward.pop() else {
+            return;
+        };
+        let current = self.current_path.to_string();
+        if !current.is_empty() {
+            self.as_mut().rust_mut().history_back.push(current);
+        }
+        self.as_mut().rust_mut().history_navigating = true;
+        let target_q = QString::from(&target);
+        self.as_mut().navigate(&target_q);
+        self.as_mut().rust_mut().history_navigating = false;
+        self.as_mut().sync_history_props();
     }
 
     /// (Re)starts the live watch on the directory just navigated to.

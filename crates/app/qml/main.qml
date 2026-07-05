@@ -360,13 +360,31 @@ Window {
         }
     }
 
+    // Backspace/Alt+Up go UP the tree; Alt+Left/Right walk the browser
+    // history (roadmap item 14) — the two axes are distinct on purpose.
     Shortcut {
-        sequences: ["Backspace", "Alt+Left"]
+        sequences: ["Backspace", "Alt+Up"]
         onActivated: {
             if (window.anyPopupOpen) return
             if (fileModel.currentPath !== "/") {
                 fileModel.navigate(window.parentPath(fileModel.currentPath))
             }
+        }
+    }
+
+    Shortcut {
+        sequences: ["Alt+Left"]
+        onActivated: {
+            if (window.anyPopupOpen) return
+            fileModel.goBack()
+        }
+    }
+
+    Shortcut {
+        sequences: ["Alt+Right"]
+        onActivated: {
+            if (window.anyPopupOpen) return
+            fileModel.goForward()
         }
     }
 
@@ -399,6 +417,23 @@ Window {
     // fill-space sizing (the content pane, the grid/list area, the header)
     // is handled by Layout.fillWidth/fillHeight instead of hand-computed
     // "parent.width - 200" arithmetic.
+    // Mouse thumb buttons = history back/forward. Declared before (so
+    // stacked below) the main layout: every other MouseArea in the app
+    // accepts only Left/Right buttons, letting thumb-button presses fall
+    // through to this catch-all wherever they land.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        onClicked: (mouse) => {
+            if (window.anyPopupOpen) return
+            if (mouse.button === Qt.BackButton) {
+                fileModel.goBack()
+            } else {
+                fileModel.goForward()
+            }
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 12
@@ -445,7 +480,11 @@ Window {
                         viewMode: fileModel.viewMode
                         fileModel: fileModel
                         viewOptionsOpen: viewOptionsMenuLoader.active
-                        onBackClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
+                        canGoBack: fileModel.canGoBack
+                        canGoForward: fileModel.canGoForward
+                        onBackClicked: fileModel.goBack()
+                        onForwardClicked: fileModel.goForward()
+                        onUpClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
                         onListViewRequested: {
                             fileModel.viewMode = "list"
                             fileModel.saveSettings()
