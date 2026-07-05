@@ -13,6 +13,15 @@ Rectangle {
     property string currentPath: ""
     signal settingsRequested
     signal trashContextMenuRequested(real x, real y)
+    signal pinnedContextMenuRequested(real x, real y, string path)
+
+    // Pinned folders (roadmap item 9) — drag a folder anywhere onto the
+    // sidebar to pin it. The sidebar stays a non-target for file drops
+    // (per the drag-and-drop spec); pinning is a different gesture, so
+    // the model-side pinFolder() silently ignores anything that isn't a
+    // directory.
+    readonly property var pinnedFolders: fileModel && fileModel.pinnedFoldersJoined.length > 0
+        ? fileModel.pinnedFoldersJoined.split("\n") : []
 
     width: 200
     radius: Shape.largeIncreased
@@ -104,7 +113,12 @@ Rectangle {
         }
 
         Repeater {
-            model: root._shortcuts
+            model: root._shortcuts.concat(root.pinnedFolders.map((p) => ({
+                label: p === "/" ? "/" : p.substring(p.lastIndexOf("/") + 1),
+                icon: "keep",
+                path: p,
+                isPinned: true
+            })))
 
             delegate: Item {
                 id: navItem
@@ -158,9 +172,11 @@ Rectangle {
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                         onClicked: (mouse) => {
                             if (mouse.button === Qt.RightButton) {
+                                var scenePos = navItem.mapToItem(null, mouse.x, mouse.y)
                                 if (navItem.modelData.isTrash) {
-                                    var scenePos = navItem.mapToItem(null, mouse.x, mouse.y)
                                     root.trashContextMenuRequested(scenePos.x, scenePos.y)
+                                } else if (navItem.modelData.isPinned) {
+                                    root.pinnedContextMenuRequested(scenePos.x, scenePos.y, navItem.modelData.path)
                                 }
                                 return
                             }
@@ -184,5 +200,38 @@ Rectangle {
         doneBytes: root.fileModel ? root.fileModel.transferDoneBytes : 0
         totalBytes: root.fileModel ? root.fileModel.transferTotalBytes : 0
         speedLabel: root.fileModel ? root.fileModel.transferSpeedLabel : ""
+    }
+
+    // Whole-sidebar drop target for pinning. Behind the rows in z, but
+    // that doesn't matter for drops: the rows have no DropAreas of their
+    // own, so every text/uri-list drag over the sidebar lands here.
+    DropArea {
+        id: pinDropArea
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        onDropped: (drop) => {
+            if (!drop.hasUrls || !root.fileModel) {
+                return
+            }
+            drop.acceptProposedAction()
+            for (var i = 0; i < drop.urls.length; i++) {
+                // decodeURIComponent: QUrl.toString() is percent-encoded —
+                // see the matching comment on the file views' DropAreas.
+                root.fileModel.pinFolder(decodeURIComponent(drop.urls[i].toString().replace("file://", "")))
+            }
+        }
+    }
+
+    // Drop-hover cue: a soft primary tint + outline while a drag is over
+    // the sidebar, matching the folder rows' containsDrag highlight
+    // language.
+    Rectangle {
+        anchors.fill: parent
+        radius: root.radius
+        color: Qt.alpha(Color.scheme.primary, 0.08)
+        border.width: 2
+        border.color: Qt.alpha(Color.scheme.primary, 0.5)
+        opacity: pinDropArea.containsDrag ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
     }
 }

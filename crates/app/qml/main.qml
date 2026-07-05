@@ -15,6 +15,8 @@ Window {
     property bool _pendingDeleteIsSelection: false
     property string _pendingDeletePermanentlyName: ""
     property bool _pendingDeletePermanentlyIsSelection: false
+    // Which pinned folder the open PinnedContextMenu acts on.
+    property string _pendingUnpinPath: ""
 
     // True for the duration of a drag started by this app's own
     // FileListItem/FileGridItem (see their _startDrag()/Drag.onDragFinished).
@@ -189,6 +191,12 @@ Window {
         trashContextMenuLoader.item.popup(x, y)
     }
 
+    function openPinnedContextMenu(x, y, path) {
+        window._pendingUnpinPath = path
+        pinnedContextMenuLoader.active = true
+        pinnedContextMenuLoader.item.popup(x, y)
+    }
+
     function openEmptyTrashConfirmDialog() {
         emptyTrashConfirmDialogLoader.active = true
         emptyTrashConfirmDialogLoader.item.open("Permanently delete everything in Trash? This can't be undone.")
@@ -234,6 +242,7 @@ Window {
         viewOptionsMenuLoader.active || itemContextMenuLoader.active ||
         renameDialogLoader.active || propertiesDialogLoader.active ||
         deleteConfirmDialogLoader.active || trashContextMenuLoader.active ||
+        pinnedContextMenuLoader.active ||
         emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active ||
         deletePermanentlyConfirmDialogLoader.active
 
@@ -367,6 +376,7 @@ Window {
                     currentPath: fileModel.currentPath ? fileModel.currentPath : ""
                     onSettingsRequested: window.openSettingsDialog()
                     onTrashContextMenuRequested: (x, y) => window.openTrashContextMenu(x, y)
+                    onPinnedContextMenuRequested: (x, y, path) => window.openPinnedContextMenu(x, y, path)
                 }
 
                 ColumnLayout {
@@ -1223,6 +1233,16 @@ Window {
         sourceComponent: TrashContextMenu {
             onEmptyTrashRequested: window.openEmptyTrashConfirmDialog()
             onClosed: Qt.callLater(() => trashContextMenuLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: pinnedContextMenuLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: PinnedContextMenu {
+            onUnpinRequested: fileModel.unpinFolder(window._pendingUnpinPath)
+            onClosed: Qt.callLater(() => pinnedContextMenuLoader.active = false)
         }
     }
 
