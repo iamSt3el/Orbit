@@ -33,40 +33,24 @@ Item {
     // property — more reliable across delegate recycling.
     readonly property var fileModel: ListView.view ? ListView.view.model : null
 
-    // Drag-and-drop: exported as real text/uri-list so external apps (a
-    // file browser, the desktop) can accept it too. Drag.keys is declared
-    // for completeness but DropAreas in this app do NOT rely on it to tell
-    // an internal drag apart from an external one — DragEvent.keys doesn't
-    // reliably carry the source's Drag.keys across this platform's native
-    // drag-and-drop round-trip. window._internalDragActive (set below) is
-    // the reliable signal instead.
-    Drag.active: false
-    Drag.dragType: Drag.Automatic
-    Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-    Drag.proposedAction: Qt.MoveAction
-    Drag.keys: ["text/uri-list", "application/x-filemanager-internal"]
-    Drag.onDragFinished: (dropAction) => {
-        root.Drag.active = false
-        root.Window.window._internalDragActive = false
-    }
-
     // Dragging a row that's already part of the selection drags the whole
     // selection; dragging an unselected row drags just that one item —
     // mirrors the existing right-click rule in rowArea.onClicked below.
-    // grabToImage is asynchronous — Drag.active only flips on once the
+    // grabToImage is asynchronous — the drag only starts once the
     // snapshot is ready, so the OS drag always starts with a real preview
-    // image instead of just a bare cursor.
+    // image instead of just a bare cursor. The drag itself runs on the
+    // window's persistent dragProxy, NOT on this delegate: a delegate is
+    // destroyed whenever the listing changes (spring-loaded navigation
+    // mid-drag, watcher refresh), and destroying an active drag source
+    // crashes Qt.
     function _startDrag() {
-        root.Window.window._internalDragActive = true
         var names = root.selected ? root.fileModel.selectedNamesJoined().split("\n") : [root.name]
         // Percent-encode each path segment: a bare space (or #, %, ?) in a
         // filename makes an invalid URI that strict receivers mangle or
         // reject; our own DropAreas decode symmetrically on the way in.
         var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n).split("/").map(encodeURIComponent).join("/"))
-        root.Drag.mimeData = { "text/uri-list": uris.join("\r\n") }
         root.grabToImage((result) => {
-            root.Drag.imageSource = result.url
-            root.Drag.active = true
+            root.Window.window.startInternalDrag(uris.join("\r\n"), result.url)
         })
     }
 

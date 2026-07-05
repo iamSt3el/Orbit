@@ -28,31 +28,16 @@ Item {
 
     readonly property var fileModel: GridView.view ? GridView.view.model : null
 
-    // See FileListItem.qml's matching properties/function for why.
-    Drag.active: false
-    Drag.dragType: Drag.Automatic
-    Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-    Drag.proposedAction: Qt.MoveAction
-    Drag.keys: ["text/uri-list", "application/x-filemanager-internal"]
-    Drag.onDragFinished: (dropAction) => {
-        root.Drag.active = false
-        root.Window.window._internalDragActive = false
-    }
-
-    // grabToImage is asynchronous — Drag.active only flips on once the
-    // snapshot is ready, so the OS drag always starts with a real preview
-    // image instead of just a bare cursor.
+    // See FileListItem.qml's matching function for why the drag runs on
+    // the window's persistent dragProxy instead of this delegate.
     function _startDrag() {
-        root.Window.window._internalDragActive = true
         var names = root.selected ? root.fileModel.selectedNamesJoined().split("\n") : [root.name]
         // Percent-encode each path segment: a bare space (or #, %, ?) in a
         // filename makes an invalid URI that strict receivers mangle or
         // reject; our own DropAreas decode symmetrically on the way in.
         var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n).split("/").map(encodeURIComponent).join("/"))
-        root.Drag.mimeData = { "text/uri-list": uris.join("\r\n") }
         root.grabToImage((result) => {
-            root.Drag.imageSource = result.url
-            root.Drag.active = true
+            root.Window.window.startInternalDrag(uris.join("\r\n"), result.url)
         })
     }
 

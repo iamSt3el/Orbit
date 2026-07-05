@@ -25,6 +25,45 @@ Window {
     // app-local flag is what DropAreas actually use to tell an internal drag
     // apart from a genuinely external one — not drop.keys.
     property bool _internalDragActive: false
+    // Where the current internal drag started. Empty-space drops back
+    // into this folder are no-ops; anywhere else (after spring-loading
+    // into a subfolder mid-drag) they're a move into the current folder.
+    property string _internalDragSourceDir: ""
+
+    // Every file drag runs through this one persistent item instead of
+    // the delegate that initiated it. A delegate is destroyed whenever
+    // the listing changes under it — spring-loaded folder navigation
+    // mid-drag, a watcher refresh removing the dragged row — and
+    // deleting the Drag.Automatic source while the native drag loop is
+    // running crashes Qt ("QObject: shared QObject was deleted
+    // directly", then SIGSEGV). This proxy's lifetime matches the
+    // window's, so no listing change can pull it out from under an
+    // active drag.
+    Item {
+        id: dragProxy
+        width: 1
+        height: 1
+        Drag.dragType: Drag.Automatic
+        Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+        Drag.proposedAction: Qt.MoveAction
+        Drag.keys: ["text/uri-list", "application/x-filemanager-internal"]
+        Drag.onDragFinished: {
+            dragProxy.Drag.active = false
+            window._internalDragActive = false
+            window._internalDragSourceDir = ""
+        }
+    }
+
+    // Called by FileListItem/FileGridItem's _startDrag() once their
+    // grabToImage snapshot is ready — mime data and image must both be
+    // set before Drag.active starts the native drag.
+    function startInternalDrag(urisJoined, imageUrl) {
+        window._internalDragActive = true
+        window._internalDragSourceDir = fileModel.currentPath
+        dragProxy.Drag.mimeData = { "text/uri-list": urisJoined }
+        dragProxy.Drag.imageSource = imageUrl
+        dragProxy.Drag.active = true
+    }
 
     // Direction of the most recent navigation — "forward" (into a child),
     // "back" (up to an ancestor), or "neutral" (sidebar jump, path edit).
