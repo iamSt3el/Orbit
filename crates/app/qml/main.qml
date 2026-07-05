@@ -153,12 +153,32 @@ Window {
         return path.substring(0, idx)
     }
 
+    // Ctrl+wheel steps the icon size through the four levels (round-2
+    // item 19), persisted like the ViewOptionsMenu path.
+    readonly property var _iconSizeOrder: ["small", "medium", "large", "extraLarge"]
+    function stepIconSize(up) {
+        var idx = window._iconSizeOrder.indexOf(fileModel.iconSizeLevel)
+        if (idx < 0) {
+            idx = 1
+        }
+        var next = Math.max(0, Math.min(window._iconSizeOrder.length - 1, idx + (up ? 1 : -1)))
+        if (window._iconSizeOrder[next] !== fileModel.iconSizeLevel) {
+            fileModel.iconSizeLevel = window._iconSizeOrder[next]
+            fileModel.saveSettings()
+        }
+    }
+
     // Wheel notches deliver angleDelta in eighths of a degree — 120 units
     // is one physical "click" of a standard mouse wheel. Scrolling by a
     // fixed, larger-than-default number of pixels per notch here (instead
     // of relying on Flickable's own small default step) is what "increase
     // the scroll distance" means in practice.
     function applyWheelScroll(view, wheel) {
+        if (wheel.modifiers & Qt.ControlModifier) {
+            window.stepIconSize(wheel.angleDelta.y > 0)
+            wheel.accepted = true
+            return
+        }
         var maxY = Math.max(0, view.contentHeight - view.height)
         view.contentY = Math.max(0, Math.min(maxY, view.contentY - (wheel.angleDelta.y / 120) * 180))
         wheel.accepted = true
