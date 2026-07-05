@@ -180,7 +180,7 @@ Window {
     // stale across tabs — the first navigation in a freshly focused tab
     // may read as "neutral", which is fine.
     Connections {
-        target: window.fileModel
+        target: window.fileModel ? window.fileModel : null
         function onCurrentPathChanged() {
             var oldPath = window._lastPath
             var newPath = window.fileModel.currentPath
@@ -600,7 +600,13 @@ Window {
                     Layout.fillHeight: true
                     Layout.preferredWidth: 200
                     fileModel: fileModel
-                    currentPath: fileModel.currentPath ? fileModel.currentPath : ""
+                    // The extra `fileModel ?` guards here and on the
+                    // header below: window.fileModel is transiently
+                    // undefined while the Window's properties initialize
+                    // (the tab array's id reference resolves at component
+                    // completion), so startup-evaluated bindings must not
+                    // dereference it bare.
+                    currentPath: fileModel && fileModel.currentPath ? fileModel.currentPath : ""
                     onSettingsRequested: window.openSettingsDialog()
                     onTrashContextMenuRequested: (x, y) => window.openTrashContextMenu(x, y)
                     onPinnedContextMenuRequested: (x, y, path) => window.openPinnedContextMenu(x, y, path)
@@ -751,13 +757,13 @@ Window {
                         Layout.preferredHeight: 56
                         Layout.minimumHeight: 56
                         Layout.maximumHeight: 56
-                        title: fileModel.currentPath ? fileModel.currentPath : ""
-                        showBackButton: fileModel.currentPath && fileModel.currentPath !== "/"
-                        viewMode: fileModel.viewMode
+                        title: fileModel && fileModel.currentPath ? fileModel.currentPath : ""
+                        showBackButton: fileModel ? (fileModel.currentPath && fileModel.currentPath !== "/") === true : false
+                        viewMode: fileModel ? fileModel.viewMode : "list"
                         fileModel: fileModel
                         viewOptionsOpen: viewOptionsMenuLoader.active
-                        canGoBack: fileModel.canGoBack
-                        canGoForward: fileModel.canGoForward
+                        canGoBack: fileModel ? fileModel.canGoBack : false
+                        canGoForward: fileModel ? fileModel.canGoForward : false
                         previewOpen: window.previewVisible
                         onPreviewToggled: window.previewVisible = !window.previewVisible
                         onBackClicked: fileModel.goBack()
@@ -802,6 +808,9 @@ Window {
                         clip: true
 
                         readonly property string folderName: {
+                            if (!fileModel) {
+                                return ""
+                            }
                             var p = fileModel.currentPath ? fileModel.currentPath : ""
                             if (p.length === 0 || p === "/") return "Root"
                             if (p === fileModel.trashPath) return "Trash"
@@ -1380,7 +1389,7 @@ Window {
                         Loader {
                             id: viewLoader
                             anchors.fill: parent
-                            sourceComponent: fileModel.viewMode === "grid" ? gridComponent : listComponent
+                            sourceComponent: (fileModel && fileModel.viewMode === "grid") ? gridComponent : listComponent
                             transform: Translate { id: viewSlide }
                             // List↔grid toggle (and first load): the fresh
                             // view crossfades/scales in instead of snapping.
@@ -1443,7 +1452,7 @@ Window {
                         }
 
                         Connections {
-                            target: fileModel
+                            target: fileModel ? fileModel : null
                             function onIsListingChanged() {
                                 if (!fileModel.isListing) {
                                     viewEntrance.restart()
@@ -1514,8 +1523,8 @@ Window {
                             anchors.centerIn: parent
                             size: 48
                             color: Color.scheme.primary
-                            visible: fileModel.isListing && _listingSpinnerGate.elapsed
-                                && fileModel.viewMode === "grid"
+                            visible: fileModel ? (fileModel.isListing && _listingSpinnerGate.elapsed
+                                && fileModel.viewMode === "grid") : false
                             running: visible
                         }
 
@@ -1524,15 +1533,18 @@ Window {
                         // breathing, which reads as "rows are coming" better
                         // than a centered spinner. Same 150ms gate.
                         Column {
-                            visible: fileModel.isListing && _listingSpinnerGate.elapsed
-                                && fileModel.viewMode === "list"
+                            id: _skeletonColumn
+                            visible: fileModel ? (fileModel.isListing && _listingSpinnerGate.elapsed
+                                && fileModel.viewMode === "list") : false
                             anchors.fill: parent
                             anchors.margins: 8
                             spacing: 10
                             clip: true
 
                             SequentialAnimation on opacity {
-                                running: parent.visible
+                                // Animations aren't Items — no `parent`
+                                // in scope; reference the Column by id.
+                                running: _skeletonColumn.visible
                                 loops: Animation.Infinite
                                 NumberAnimation { from: 1; to: 0.45; duration: 600; easing.type: Easing.InOutQuad }
                                 NumberAnimation { from: 0.45; to: 1; duration: 600; easing.type: Easing.InOutQuad }
@@ -1579,7 +1591,7 @@ Window {
                             id: _listingSpinnerGate
                             property bool elapsed: false
                             interval: 150
-                            running: fileModel.isListing
+                            running: fileModel ? fileModel.isListing : false
                             onRunningChanged: if (running) elapsed = false
                             onTriggered: elapsed = true
                         }
@@ -1589,7 +1601,7 @@ Window {
                         // show), keyed off the live view's row count.
                         EmptyState {
                             anchors.centerIn: parent
-                            visible: (!fileModel.isListing && viewLoader.item)
+                            visible: (fileModel && !fileModel.isListing && viewLoader.item)
                                 ? viewLoader.item.count === 0 : false
                             // window.fileListModel, not the bare fileModel
                             // id — this component declares its own
@@ -1648,6 +1660,9 @@ Window {
                             font.weight: Type.labelMedium.weight
                             font.pixelSize: Type.labelMedium.size
                             text: {
+                                if (!fileModel) {
+                                    return ""
+                                }
                                 var t = Format.formatItemCount(fileModel.displayedCount)
                                 if (fileModel.displayedTotalBytes > 0) {
                                     t += " · " + Format.formatBytes(fileModel.displayedTotalBytes)
@@ -1908,7 +1923,7 @@ Window {
     }
 
     Connections {
-        target: fileModel
+        target: fileModel ? fileModel : null
         function onErrorOccurred(message) { snackbar.show(message) }
         function onOperationCompleted(description, canUndo) {
             snackbar.show(description, canUndo ? "Undo" : "")
