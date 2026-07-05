@@ -66,6 +66,34 @@ Window {
         dragProxy.Drag.active = true
     }
 
+    // Shared by the two view-background DropAreas and the edge
+    // auto-scroll strips: a drop on empty space imports/moves into the
+    // current folder. An internal drag dropped back into the folder it
+    // STARTED from is a no-op, not an import — dropped anywhere else
+    // (after spring-loading into a subfolder mid-drag) it's a move.
+    // window._internalDragActive / _internalDragSourceDir, not drop.keys,
+    // which doesn't reliably carry the source's Drag.keys across this
+    // platform's native drag-and-drop round-trip.
+    function handleEmptySpaceDrop(drop) {
+        if (!drop.hasUrls) {
+            return
+        }
+        if (window._internalDragActive && window._internalDragSourceDir === fileModel.currentPath) {
+            drop.accepted = false
+            return
+        }
+        var isMove = window._internalDragActive || drop.proposedAction === Qt.MoveAction
+        drop.acceptProposedAction()
+        var paths = []
+        for (var i = 0; i < drop.urls.length; i++) {
+            // decodeURIComponent: QUrl.toString() is percent-encoded, so a
+            // dropped "my photo.jpg" otherwise arrives as a literal
+            // "my%20photo.jpg" path and every operation on it fails.
+            paths.push(decodeURIComponent(drop.urls[i].toString().replace("file://", "")))
+        }
+        fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
+    }
+
     // Direction of the most recent navigation — "forward" (into a child),
     // "back" (up to an ancestor), or "neutral" (sidebar jump, path edit).
     // Derived from path prefixes in fileModel.onCurrentPathChanged and
@@ -785,6 +813,20 @@ Window {
                                     // rectangle never covered.
                                     property var sweptNames: ({})
 
+                                    // Rubber-band auto-scroll (round-2 item
+                                    // 21): dragging the selector near the
+                                    // top/bottom edge scrolls the view.
+                                    property real _autoScrollDir: 0
+                                    Timer {
+                                        interval: 16
+                                        repeat: true
+                                        running: listBackgroundArea.dragging && listBackgroundArea._autoScrollDir !== 0
+                                        onTriggered: {
+                                            var maxY = Math.max(0, listView.contentHeight - listView.height)
+                                            listView.contentY = Math.max(0, Math.min(maxY, listView.contentY + listBackgroundArea._autoScrollDir * 8))
+                                        }
+                                    }
+
                                     onWheel: (wheel) => window.applyWheelScroll(listView, wheel)
 
                                     onPressed: (mouse) => {
@@ -815,6 +857,8 @@ Window {
                                             return
                                         }
                                         listBackgroundArea.dragging = true
+                                        listBackgroundArea._autoScrollDir =
+                                            mouse.y < 40 ? -1 : (mouse.y > listBackgroundArea.height - 40 ? 1 : 0)
 
                                         listSelectionRect.x = Math.min(listBackgroundArea.pressX, mouse.x)
                                         listSelectionRect.y = Math.min(listBackgroundArea.pressY, mouse.y)
@@ -861,6 +905,7 @@ Window {
                                     onReleased: {
                                         listSelectionRect.visible = false
                                         listBackgroundArea.dragging = false
+                                        listBackgroundArea._autoScrollDir = 0
                                     }
 
                                     onClicked: (mouse) => {
@@ -885,43 +930,17 @@ Window {
 
                                 // Accepts drops landing on empty space (not on a
                                 // specific folder row, which FileListItem's own
-                                // DropArea already handles) — imports into the
-                                // current folder. z: -1 keeps this behind the
-                                // delegates (see listBackgroundArea's matching
-                                // comment) so a drop landing on a folder row goes
-                                // to that row's own DropArea, not this one.
-                                // An internal drag dropped back into the folder it
-                                // STARTED from is a no-op, not an import — but
-                                // dropped anywhere else (after spring-loading into
-                                // a subfolder mid-drag) it's a move into the
-                                // current folder. window._internalDragActive /
-                                // _internalDragSourceDir, not drop.keys, which
-                                // doesn't reliably carry the source's Drag.keys
-                                // across this platform's native drag-and-drop
-                                // round-trip.
+                                // DropArea already handles) — see
+                                // window.handleEmptySpaceDrop for the semantics.
+                                // z: -1 keeps this behind the delegates (see
+                                // listBackgroundArea's matching comment) so a
+                                // drop landing on a folder row goes to that
+                                // row's own DropArea, not this one.
                                 DropArea {
                                     z: -1
                                     anchors.fill: parent
                                     keys: ["text/uri-list"]
-                                    onDropped: (drop) => {
-                                        if (!drop.hasUrls) {
-                                            return
-                                        }
-                                        if (window._internalDragActive && window._internalDragSourceDir === fileModel.currentPath) {
-                                            drop.accepted = false
-                                            return
-                                        }
-                                        var isMove = window._internalDragActive || drop.proposedAction === Qt.MoveAction
-                                        drop.acceptProposedAction()
-                                        var paths = []
-                                        for (var i = 0; i < drop.urls.length; i++) {
-                                            // decodeURIComponent: QUrl.toString() is percent-encoded, so a
-                                            // dropped "my photo.jpg" otherwise arrives as a literal
-                                            // "my%20photo.jpg" path and every operation on it fails.
-                                            paths.push(decodeURIComponent(drop.urls[i].toString().replace("file://", "")))
-                                        }
-                                        fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
-                                    }
+                                    onDropped: (drop) => window.handleEmptySpaceDrop(drop)
                                 }
 
                                 ScrollBar {
@@ -1008,6 +1027,19 @@ Window {
                                     // See the matching comment in listBackgroundArea.
                                     property var sweptNames: ({})
 
+                                    // See listBackgroundArea's matching
+                                    // auto-scroll comment.
+                                    property real _autoScrollDir: 0
+                                    Timer {
+                                        interval: 16
+                                        repeat: true
+                                        running: gridBackgroundArea.dragging && gridBackgroundArea._autoScrollDir !== 0
+                                        onTriggered: {
+                                            var maxY = Math.max(0, gridView.contentHeight - gridView.height)
+                                            gridView.contentY = Math.max(0, Math.min(maxY, gridView.contentY + gridBackgroundArea._autoScrollDir * 8))
+                                        }
+                                    }
+
                                     onWheel: (wheel) => window.applyWheelScroll(gridView, wheel)
 
                                     onPressed: (mouse) => {
@@ -1034,6 +1066,8 @@ Window {
                                             return
                                         }
                                         gridBackgroundArea.dragging = true
+                                        gridBackgroundArea._autoScrollDir =
+                                            mouse.y < 40 ? -1 : (mouse.y > gridBackgroundArea.height - 40 ? 1 : 0)
 
                                         gridSelectionRect.x = Math.min(gridBackgroundArea.pressX, mouse.x)
                                         gridSelectionRect.y = Math.min(gridBackgroundArea.pressY, mouse.y)
@@ -1071,6 +1105,7 @@ Window {
                                     onReleased: {
                                         gridSelectionRect.visible = false
                                         gridBackgroundArea.dragging = false
+                                        gridBackgroundArea._autoScrollDir = 0
                                     }
 
                                     onClicked: (mouse) => {
@@ -1098,25 +1133,7 @@ Window {
                                     z: -1
                                     anchors.fill: parent
                                     keys: ["text/uri-list"]
-                                    onDropped: (drop) => {
-                                        if (!drop.hasUrls) {
-                                            return
-                                        }
-                                        if (window._internalDragActive && window._internalDragSourceDir === fileModel.currentPath) {
-                                            drop.accepted = false
-                                            return
-                                        }
-                                        var isMove = window._internalDragActive || drop.proposedAction === Qt.MoveAction
-                                        drop.acceptProposedAction()
-                                        var paths = []
-                                        for (var i = 0; i < drop.urls.length; i++) {
-                                            // decodeURIComponent: QUrl.toString() is percent-encoded, so a
-                                            // dropped "my photo.jpg" otherwise arrives as a literal
-                                            // "my%20photo.jpg" path and every operation on it fails.
-                                            paths.push(decodeURIComponent(drop.urls[i].toString().replace("file://", "")))
-                                        }
-                                        fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
-                                    }
+                                    onDropped: (drop) => window.handleEmptySpaceDrop(drop)
                                 }
 
                                 ScrollBar {
@@ -1201,6 +1218,57 @@ Window {
                             function onIsListingChanged() {
                                 if (!fileModel.isListing) {
                                     viewEntrance.restart()
+                                }
+                            }
+                        }
+
+                        // Drag-hover auto-scroll strips (round-2 item 21):
+                        // parking a DnD drag at the view's top/bottom edge
+                        // scrolls it, so a long list is reachable mid-drag.
+                        // They're DropAreas (only DropAreas see drags), so a
+                        // release inside a strip routes through the same
+                        // empty-space import handler instead of being lost.
+                        DropArea {
+                            id: _dragScrollTop
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            height: 28
+                            keys: ["text/uri-list"]
+                            onDropped: (drop) => window.handleEmptySpaceDrop(drop)
+
+                            Timer {
+                                interval: 16
+                                repeat: true
+                                running: _dragScrollTop.containsDrag
+                                onTriggered: {
+                                    var v = viewLoader.item
+                                    if (v) {
+                                        v.contentY = Math.max(0, v.contentY - 10)
+                                    }
+                                }
+                            }
+                        }
+
+                        DropArea {
+                            id: _dragScrollBottom
+                            anchors.bottom: parent.bottom
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            height: 28
+                            keys: ["text/uri-list"]
+                            onDropped: (drop) => window.handleEmptySpaceDrop(drop)
+
+                            Timer {
+                                interval: 16
+                                repeat: true
+                                running: _dragScrollBottom.containsDrag
+                                onTriggered: {
+                                    var v = viewLoader.item
+                                    if (v) {
+                                        var maxY = Math.max(0, v.contentHeight - v.height)
+                                        v.contentY = Math.min(maxY, v.contentY + 10)
+                                    }
                                 }
                             }
                         }
