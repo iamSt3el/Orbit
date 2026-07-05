@@ -1,5 +1,10 @@
 # UI/UX Roadmap — M3 Expressive
 
+> **Status (2026-07-05):** items 1–6 and 8–12 shipped (specs/plans under
+> `docs/superpowers/`, one commit per feature in git history; items 8–9
+> went straight to implementation by request). Item 7 remains and still
+> needs its own spec. Round-2 candidates are listed at the bottom.
+
 Candidate UI/UX work, keeping genuine M3 Expressive fidelity (the
 project's #1 goal) front and center. Grounded in the existing component
 set: shape-morphing `Fab`, `ShapeLoader`, wavy progress bars,
@@ -135,3 +140,100 @@ Items **1 + 3 + 5** as one coherent "expressive feedback" slice
 (selection toolbar, animated changes, loading state). Item **7** as its
 own spec'd feature (it adds a cursor concept to selection semantics in
 Rust). The rest as opportunity allows.
+
+## Round 2 candidates (added 2026-07-05)
+
+### Desktop-UX fundamentals
+
+### 13. Clickable breadcrumbs
+
+The PathBar shows the path as plain text; each segment should be a
+clickable chip navigating to that ancestor, keeping the existing
+pill-to-search morph.
+
+- Why: turns every ancestor into a one-click target; cheap relative to
+  daily value.
+- Touches: `PathBar.qml`.
+
+### 14. Back/forward history
+
+Backspace/Alt+Left mean "up" today; there's no history stack, so a
+sidebar jump can't be undone with "back". A real history (Rust-side
+stack) plus mouse buttons 4/5.
+
+- Touches: `FileListModel` (history stack + canGoBack/canGoForward),
+  `TopAppBar.qml`, shortcuts in `main.qml`.
+
+### 15. Copy-conflict resolution
+
+Collisions currently fail into the snackbar. A "Replace / Skip / Keep
+both" dialog with an apply-to-all checkbox for bulk transfers.
+
+- Touches: fm-core copy/move paths (conflict signal instead of error),
+  new dialog component, transfer plumbing — spec it as its own feature.
+
+### 16. Status line
+
+A quiet "142 items · 3.2 GB · 3 selected" (footer or under the
+headline). `selectionCount` already exists; needs an item-count/total
+size property.
+
+### Expressive polish
+
+### 17. Collapsing headline on scroll
+
+The 44px folder headline shrinks/fades as the view scrolls — M3
+large-top-app-bar behavior.
+
+### 18. Skeleton loading rows
+
+Shimmering placeholder rows for list-view loading instead of (or ahead
+of) the centered ShapeLoader; spinner stays for grid.
+
+### 19. Ctrl+scroll icon zoom
+
+Ctrl+wheel steps through the four `iconSizeLevel`s, persisted via the
+existing `saveSettings()`.
+
+### 20. Humanized dates
+
+"Yesterday 14:32", "2 h ago" in the modified column; exact date in a
+tooltip.
+
+### 21. Drag auto-scroll
+
+Rubber-band selection and drags near the view edge should scroll the
+view (deferred in the multi-select plan; more visible now that
+spring-loaded folders exist).
+
+### Bigger swings (each its own spec)
+
+### 22. Preview/details pane
+
+Toggleable right-side panel: large thumbnail, full metadata, text-file
+preview. Pairs with item 7's cursor.
+
+### 23. Tabs
+
+Multiple open directories. Touches the model's single-current-path
+assumption everywhere — the most architectural item here.
+
+### 24. Mounted volumes in the sidebar
+
+USB drives/partitions with a capacity bar (`LinearWavyProgressBar`)
+and eject.
+
+### 25. Recursive search
+
+Background directory walk with streamed results instead of filtering
+only the current listing.
+
+### 26. Open with…
+
+A chooser over installed desktop entries instead of always `xdg-open`.
+
+### Round-2 suggested order
+
+Item **7**, then **13 + 14** as a "navigate like a desktop app" slice;
+**16 + 19 + 20** as a small-polish batch; the rest as opportunity
+allows.
