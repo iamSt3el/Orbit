@@ -43,3 +43,36 @@ async fn reports_error_for_nonexistent_directory() {
     let result = rx.recv().await.expect("channel should yield one error");
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn search_recursive_finds_nested_matches_with_relative_names() {
+    let dir = tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("docs/old")).unwrap();
+    fs::write(dir.path().join("notes.txt"), b"x").unwrap();
+    fs::write(dir.path().join("docs/old/notes-2024.txt"), b"x").unwrap();
+    fs::write(dir.path().join("docs/other.md"), b"x").unwrap();
+    fs::create_dir(dir.path().join(".hidden")).unwrap();
+    fs::write(dir.path().join(".hidden/notes-secret.txt"), b"x").unwrap();
+
+    let results =
+        listing::search_recursive(dir.path().to_path_buf(), "notes".into(), false, 100).await;
+
+    let names: HashSet<String> = results.iter().map(|e| e.name.clone()).collect();
+    assert_eq!(
+        names,
+        HashSet::from(["notes.txt".to_string(), "docs/old/notes-2024.txt".to_string()])
+    );
+}
+
+#[tokio::test]
+async fn search_recursive_honors_the_result_limit() {
+    let dir = tempdir().unwrap();
+    for i in 0..10 {
+        fs::write(dir.path().join(format!("match-{i}.txt")), b"x").unwrap();
+    }
+
+    let results =
+        listing::search_recursive(dir.path().to_path_buf(), "match".into(), false, 4).await;
+
+    assert_eq!(results.len(), 4);
+}

@@ -1366,6 +1366,51 @@ impl qobject::FileListModel {
         self.as_mut().set_search_active(active);
         self.as_mut().clamp_cursor();
         self.as_mut().sync_listing_stats();
+
+        // Recursive search (round-2 item 25). The instant filter above
+        // already narrowed the current listing; a background walk then
+        // replaces it with nested matches whose names are paths relative
+        // to the current folder — which keeps every name-based operation
+        // (open, trash, drag, thumbnails) working, since they all resolve
+        // current_path/name. Guarded by listing_generation AND a
+        // query-still-current check: per-keystroke walks race each other,
+        // navigation, and watcher refreshes.
+        if active {
+            let root = PathBuf::from(self.current_path.to_string());
+            let query_str = query.to_string();
+            let include_hidden = self.show_hidden;
+            let sort_key = self.sort_key.to_string();
+            let ascending = self.sort_ascending;
+            let generation = {
+                let mut state = self.as_mut().rust_mut();
+                state.listing_generation += 1;
+                state.listing_generation
+            };
+            let qt_thread = self.qt_thread();
+            runtime().spawn(async move {
+                let mut results =
+                    fm_core::listing::search_recursive(root, query_str.clone(), include_hidden, 500)
+                        .await;
+                sort_entries(&mut results, &sort_key, ascending);
+                let _ = qt_thread.queue(move |mut model| {
+                    if model.listing_generation != generation
+                        || model.search_query.to_string() != query_str
+                    {
+                        return;
+                    }
+                    model.as_mut().begin_reset_model();
+                    model.as_mut().rust_mut().entries = results;
+                    model.as_mut().rust_mut().rebuild_displayed();
+                    model.as_mut().end_reset_model();
+                    model.as_mut().clamp_cursor();
+                    model.as_mut().sync_listing_stats();
+                });
+            });
+        } else {
+            // Query cleared: the entries may still be recursive results —
+            // restore the plain listing of the current directory.
+            self.as_mut().refresh_entries_diff();
+        }
     }
 
     fn set_show_hidden(mut self: core::pin::Pin<&mut Self>, show_hidden: bool) {

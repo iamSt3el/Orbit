@@ -196,8 +196,17 @@ Rectangle {
         font.family: Type.bodyLarge.family
         font.pixelSize: Type.bodyLarge.size
 
-        onTextChanged: if (root.fileModel) root.fileModel.setSearchQuery(searchInput.text)
+        // Debounced (round-2 item 25): every query now spawns a recursive
+        // walk of the current directory, which per-keystroke would be
+        // wasteful on big trees. closeSearch() still clears immediately.
+        onTextChanged: _searchDebounce.restart()
         Keys.onEscapePressed: root.closeSearch()
+
+        Timer {
+            id: _searchDebounce
+            interval: 200
+            onTriggered: if (root.fileModel) root.fileModel.setSearchQuery(searchInput.text)
+        }
 
         Behavior on opacity { NumberAnimation { duration: Motion.standard.duration; easing.type: Easing.OutCubic } }
 
