@@ -231,6 +231,19 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "entryInfoJoined"]
         fn entry_info_joined(self: &FileListModel, name: &QString) -> QString;
+
+        /// Installed apps claiming the entry's mime type (round-2 item
+        /// 26), one per line as "display name\u{1f}exec line". Empty when
+        /// none match or the entry is unknown.
+        #[qinvokable]
+        #[cxx_name = "openWithApps"]
+        fn open_with_apps(self: &FileListModel, name: &QString) -> QString;
+
+        /// Launches the given Exec line on the entry (fire-and-forget,
+        /// like openEntry's xdg-open).
+        #[qinvokable]
+        #[cxx_name = "openEntryWith"]
+        fn open_entry_with(self: Pin<&mut FileListModel>, name: &QString, exec: &QString);
     }
 
     unsafe extern "RustQt" {
@@ -1063,6 +1076,29 @@ impl qobject::FileListModel {
             entry.icon_key.clone(),
         ];
         QString::from(&fields.join("\u{1f}"))
+    }
+
+    fn open_with_apps(&self, name: &QString) -> QString {
+        let n = name.to_string();
+        let Some(entry) = self.entries.iter().find(|e| e.name == n) else {
+            return QString::from("");
+        };
+        let lines: Vec<String> = fm_core::apps::apps_for_mime(&entry.mime_type)
+            .into_iter()
+            .map(|app| format!("{}\u{1f}{}", app.name, app.exec))
+            .collect();
+        QString::from(&lines.join("\n"))
+    }
+
+    fn open_entry_with(mut self: core::pin::Pin<&mut Self>, name: &QString, exec: &QString) {
+        let target = PathBuf::from(self.current_path.to_string()).join(name.to_string());
+        if let Err(e) = runtime().block_on(fm_core::apps::launch_with(&exec.to_string(), &target)) {
+            eprintln!("open_entry_with failed: {e}");
+            self.as_mut().error_occurred(QString::from(&format!(
+                "Couldn't launch \"{}\": {e}",
+                exec.to_string()
+            )));
+        }
     }
 
     fn open_selected_entry(mut self: core::pin::Pin<&mut Self>) {

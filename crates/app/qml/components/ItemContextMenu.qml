@@ -25,6 +25,7 @@ Item {
     property bool isTrashView: false
 
     signal openRequested(string name)
+    signal openWithRequested(string name)
     signal renameRequested(string name)
     signal duplicateRequested(string name)
     signal copyPathRequested(string name)
@@ -60,7 +61,10 @@ Item {
             { icon: "delete", label: "Delete " + root.selectionCount + " items", action: "delete", destructive: true }
         ]
         : [
-            { icon: "open_in_new", label: "Open", action: "open" },
+            { icon: "open_in_new", label: "Open", action: "open" }
+        ].concat(root.entryIsDir ? [] : [
+            { icon: "apps", label: "Open with…", action: "openWith" }
+        ]).concat([
             { icon: "content_cut", label: "Cut", action: "cut" },
             { icon: "content_copy", label: "Copy", action: "copy" },
             { icon: "edit", label: "Rename", action: "rename" },
@@ -68,7 +72,7 @@ Item {
             { icon: "link", label: "Copy Path", action: "copyPath" },
             { icon: "delete", label: "Delete", action: "delete", destructive: true },
             { icon: "info", label: "Properties", action: "properties" }
-        ]
+        ])
 
     function popup(x, y, name, isDir, size, modified, mimeType, permissions, selectionCount, isTrashView) {
         root.entryName = name
@@ -186,6 +190,7 @@ Item {
                             root.close()
                             switch (menuItem.modelData.action) {
                             case "open": root.openRequested(root.entryName); break
+                            case "openWith": root.openWithRequested(root.entryName); break
                             case "cut": root.cutRequested(root.entryName); break
                             case "copy": root.copyRequested(root.entryName); break
                             case "rename": root.renameRequested(root.entryName); break

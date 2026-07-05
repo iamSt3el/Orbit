@@ -289,6 +289,11 @@ Window {
         trashContextMenuLoader.item.popup(x, y)
     }
 
+    function openOpenWithDialog(name) {
+        openWithDialogLoader.active = true
+        openWithDialogLoader.item.open(name)
+    }
+
     function openPinnedContextMenu(x, y, path) {
         window._pendingUnpinPath = path
         pinnedContextMenuLoader.active = true
@@ -340,7 +345,7 @@ Window {
         viewOptionsMenuLoader.active || itemContextMenuLoader.active ||
         renameDialogLoader.active || propertiesDialogLoader.active ||
         deleteConfirmDialogLoader.active || trashContextMenuLoader.active ||
-        pinnedContextMenuLoader.active ||
+        pinnedContextMenuLoader.active || openWithDialogLoader.active ||
         emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active ||
         deletePermanentlyConfirmDialogLoader.active
 
@@ -1533,6 +1538,7 @@ Window {
                     fileModel.openEntry(name)
                 }
             }
+            onOpenWithRequested: (name) => window.openOpenWithDialog(name)
             onRenameRequested: (name) => window.openRenameDialog(name)
             onDuplicateRequested: (name) => {
                 if (itemContextMenu.selectionCount > 1) {
@@ -1646,6 +1652,16 @@ Window {
         sourceComponent: TrashContextMenu {
             onEmptyTrashRequested: window.openEmptyTrashConfirmDialog()
             onClosed: Qt.callLater(() => trashContextMenuLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: openWithDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: OpenWithDialog {
+            fileModel: window.fileListModel
+            onClosed: Qt.callLater(() => openWithDialogLoader.active = false)
         }
     }
 
