@@ -178,6 +178,10 @@ pub mod qobject {
         fn create_folder(self: Pin<&mut FileListModel>, name: &QString);
 
         #[qinvokable]
+        #[cxx_name = "createFile"]
+        fn create_file(self: Pin<&mut FileListModel>, name: &QString);
+
+        #[qinvokable]
         #[cxx_name = "renameEntry"]
         fn rename_entry(self: Pin<&mut FileListModel>, old_name: &QString, new_name: &QString);
 
@@ -987,6 +991,24 @@ impl qobject::FileListModel {
                 eprintln!("create_folder failed: {e}");
                 self.as_mut()
                     .error_occurred(QString::from(&format!("Couldn't create folder: {e}")));
+            }
+        }
+        self.as_mut().refresh_entries_diff();
+    }
+
+    fn create_file(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        match runtime().block_on(fm_core::ops::create_file(&current, &name.to_string())) {
+            Ok(path) => {
+                let op = UndoOp::CreateFile { path };
+                let desc = op.describe();
+                self.as_mut().rust_mut().journal.record(op);
+                self.as_mut().operation_completed(QString::from(&desc), true);
+            }
+            Err(e) => {
+                eprintln!("create_file failed: {e}");
+                self.as_mut()
+                    .error_occurred(QString::from(&format!("Couldn't create file: {e}")));
             }
         }
         self.as_mut().refresh_entries_diff();
@@ -2031,6 +2053,13 @@ async fn execute_undo(op: UndoOp) -> (Option<UndoOp>, usize) {
                 (None, 1)
             }
         },
+        UndoOp::CreateFile { path } => match fm_core::trash::move_to_trash(&path).await {
+            Ok(_) => (Some(UndoOp::CreateFile { path }), 0),
+            Err(e) => {
+                eprintln!("undo create-file failed for {}: {e}", path.display());
+                (None, 1)
+            }
+        },
         UndoOp::Restore { pairs } => {
             let mut ok = Vec::new();
             let mut failed = 0;
@@ -2135,6 +2164,22 @@ async fn execute_redo(op: UndoOp) -> (Option<UndoOp>, usize) {
                 Ok(()) => (Some(UndoOp::CreateFolder { path }), 0),
                 Err(e) => {
                     eprintln!("redo create-folder failed for {}: {e}", path.display());
+                    (None, 1)
+                }
+            }
+        }
+        UndoOp::CreateFile { path } => {
+            // create_new errors if anything already sits at path — the
+            // same built-in fail-safe as CreateFolder's create_dir.
+            match tokio::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .await
+            {
+                Ok(_) => (Some(UndoOp::CreateFile { path }), 0),
+                Err(e) => {
+                    eprintln!("redo create-file failed for {}: {e}", path.display());
                     (None, 1)
                 }
             }
@@ -2304,6 +2349,8 @@ enum UndoOp {
     CopyIn { pairs: Vec<(PathBuf, PathBuf)> },
     /// Undo moves the created folder to Trash.
     CreateFolder { path: PathBuf },
+    /// Undo moves the created file to Trash.
+    CreateFile { path: PathBuf },
     /// (trashed files/ path, restored path). Undo re-trashes the restored
     /// files — producing *new* trashed paths, which replace the stale
     /// first halves in the record pushed onto the redo stack.
@@ -2325,6 +2372,7 @@ impl UndoOp {
             }
             UndoOp::CopyIn { pairs } => format!("Copied {}", pluralize_items(pairs.len())),
             UndoOp::CreateFolder { path } => format!("Created folder \"{}\"", leaf(path)),
+            UndoOp::CreateFile { path } => format!("Created file \"{}\"", leaf(path)),
             UndoOp::Restore { pairs } => format!("Restored {}", pluralize_items(pairs.len())),
         }
     }
@@ -2530,6 +2578,13 @@ mod undo_journal_tests {
             }
             .describe(),
             "Created folder \"New Folder\""
+        );
+        assert_eq!(
+            UndoOp::CreateFile {
+                path: PathBuf::from("/a/notes.txt"),
+            }
+            .describe(),
+            "Created file \"notes.txt\""
         );
         assert_eq!(
             UndoOp::Restore {
