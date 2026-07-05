@@ -317,8 +317,22 @@ Item {
             }
 
             Text {
-                text: root.isDir ? "" : Format.formatBytes(root.size)
+                // Size for files plus a humanized modified time for
+                // everything (round-2 item 20) — folders previously had
+                // no secondary line at all.
+                text: {
+                    var parts = []
+                    if (!root.isDir) {
+                        parts.push(Format.formatBytes(root.size))
+                    }
+                    if (root.modified.length > 0) {
+                        parts.push(Format.humanizeModified(root.modified))
+                    }
+                    return parts.join(" · ")
+                }
                 visible: text.length > 0
+                elide: Text.ElideRight
+                width: parent.width
                 color: Color.scheme.surfaceVariantText
                 font.family: Type.bodyMedium.family
                 font.weight: Type.bodyMedium.weight
