@@ -59,6 +59,12 @@ pub mod qobject {
         // never set it: the view isn't empty during a refresh, so no
         // loading indicator belongs there.
         #[qproperty(bool, is_listing, cxx_name = "isListing")]
+        // True while a non-empty search query filters the view — the
+        // empty state picks its "no matches" variant off this. The query
+        // string itself stays Rust-side: setSearchQuery does a model
+        // reset that a generated qproperty setter couldn't, so only this
+        // derived bool is exposed.
+        #[qproperty(bool, search_active, cxx_name = "searchActive")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -428,6 +434,8 @@ fn thumbnail_semaphore() -> &'static tokio::sync::Semaphore {
 pub struct FileListModelRust {
     entries: Vec<fm_core::FileEntry>,
     search_query: QString,
+    /// Backing for the searchActive qproperty — see set_search_query().
+    search_active: bool,
     show_hidden: bool,
     sort_key: QString,
     sort_ascending: bool,
@@ -514,6 +522,7 @@ impl Default for FileListModelRust {
         Self {
             entries: Vec::new(),
             search_query: QString::from(""),
+            search_active: false,
             show_hidden: settings.show_hidden,
             sort_key: QString::from(&settings.sort_key),
             sort_ascending: settings.sort_ascending,
@@ -834,6 +843,7 @@ impl qobject::FileListModel {
         self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
         self.as_mut().sync_selection_count();
+        self.as_mut().set_search_active(false);
         self.as_mut()
             .set_current_path(QString::from(&path_buf.display().to_string()));
         self.save_settings();
@@ -934,6 +944,8 @@ impl qobject::FileListModel {
         self.as_mut().rust_mut().search_query = query.clone();
         self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
+        let active = !query.to_string().is_empty();
+        self.as_mut().set_search_active(active);
     }
 
     fn set_show_hidden(mut self: core::pin::Pin<&mut Self>, show_hidden: bool) {
