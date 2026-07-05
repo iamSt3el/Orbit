@@ -65,6 +65,12 @@ pub mod qobject {
         // reset that a generated qproperty setter couldn't, so only this
         // derived bool is exposed.
         #[qproperty(bool, search_active, cxx_name = "searchActive")]
+        // Newline-joined absolute paths of the sidebar's pinned folders
+        // (roadmap item 9) — a joined string rather than a list type so
+        // QML can bind and split() it without a QVariantList round-trip.
+        // Kept in sync with the Vec (the source of truth) and persisted
+        // by sync_pinned_folders().
+        #[qproperty(QString, pinned_folders_joined, cxx_name = "pinnedFoldersJoined")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -180,6 +186,16 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "createFile"]
         fn create_file(self: Pin<&mut FileListModel>, name: &QString);
+
+        /// Pins a directory to the sidebar (no-op for non-directories
+        /// and duplicates); persisted to settings.json.
+        #[qinvokable]
+        #[cxx_name = "pinFolder"]
+        fn pin_folder(self: Pin<&mut FileListModel>, path: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "unpinFolder"]
+        fn unpin_folder(self: Pin<&mut FileListModel>, path: &QString);
 
         #[qinvokable]
         #[cxx_name = "renameEntry"]
@@ -501,6 +517,12 @@ pub struct FileListModelRust {
     listing_generation: u64,
     /// Backing for the isListing qproperty — see navigate().
     is_listing: bool,
+    /// Source of truth for the sidebar's pinned folders; the
+    /// pinnedFoldersJoined qproperty mirrors it (see
+    /// sync_pinned_folders()) and settings.json persists it.
+    pinned_folders: Vec<String>,
+    /// Backing for the pinnedFoldersJoined qproperty.
+    pinned_folders_joined: QString,
 }
 
 fn path_or_empty(path: Option<PathBuf>) -> QString {
@@ -558,6 +580,8 @@ impl Default for FileListModelRust {
             displayed: Vec::new(),
             listing_generation: 0,
             is_listing: false,
+            pinned_folders: settings.pinned_folders.clone(),
+            pinned_folders_joined: QString::from(&settings.pinned_folders.join("\n")),
         }
     }
 }
@@ -1012,6 +1036,43 @@ impl qobject::FileListModel {
             }
         }
         self.as_mut().refresh_entries_diff();
+    }
+
+    /// Mirrors the pinned-folders Vec into the joined qproperty and
+    /// persists to settings.json — the single write path both pin and
+    /// unpin go through.
+    fn sync_pinned_folders(mut self: core::pin::Pin<&mut Self>) {
+        let joined = QString::from(&self.pinned_folders.join("\n"));
+        self.as_mut().set_pinned_folders_joined(joined);
+        self.save_settings();
+    }
+
+    fn pin_folder(mut self: core::pin::Pin<&mut Self>, path: &QString) {
+        let path_str = path.to_string();
+        // Silently ignore non-directories and duplicates — dropping a
+        // plain file (or the same folder twice) onto the sidebar just
+        // does nothing, matching the "pin target, not file target"
+        // gesture the sidebar is meant to be.
+        if !std::path::Path::new(&path_str).is_dir() {
+            return;
+        }
+        if self.pinned_folders.iter().any(|p| p == &path_str) {
+            return;
+        }
+        self.as_mut().rust_mut().pinned_folders.push(path_str);
+        self.as_mut().sync_pinned_folders();
+    }
+
+    fn unpin_folder(mut self: core::pin::Pin<&mut Self>, path: &QString) {
+        let path_str = path.to_string();
+        let before = self.pinned_folders.len();
+        self.as_mut()
+            .rust_mut()
+            .pinned_folders
+            .retain(|p| p != &path_str);
+        if self.pinned_folders.len() != before {
+            self.as_mut().sync_pinned_folders();
+        }
     }
 
     fn rename_entry(mut self: core::pin::Pin<&mut Self>, old_name: &QString, new_name: &QString) {
@@ -1926,6 +1987,7 @@ impl qobject::FileListModel {
             show_hidden: self.show_hidden,
             last_path: self.current_path.to_string(),
             resume_last_path: self.resume_last_path,
+            pinned_folders: self.pinned_folders.clone(),
         };
         if let Err(e) = settings.save() {
             eprintln!("save_settings failed: {e}");

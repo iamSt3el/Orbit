@@ -14,6 +14,9 @@ pub struct Settings {
     pub show_hidden: bool,
     pub last_path: String,
     pub resume_last_path: bool,
+    /// Absolute paths of folders the user pinned to the sidebar
+    /// (roadmap item 9) — drag a folder onto the sidebar to add one.
+    pub pinned_folders: Vec<String>,
 }
 
 impl Default for Settings {
@@ -26,6 +29,7 @@ impl Default for Settings {
             show_hidden: false,
             last_path: String::new(),
             resume_last_path: true,
+            pinned_folders: Vec::new(),
         }
     }
 }

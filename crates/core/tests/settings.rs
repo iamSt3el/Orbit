@@ -35,6 +35,7 @@ fn save_then_load_round_trips() {
         show_hidden: true,
         last_path: "/home/steel/Downloads".to_string(),
         resume_last_path: false,
+        pinned_folders: vec!["/home/steel/projects".to_string()],
     };
     settings.save_to(&path).unwrap();
 
