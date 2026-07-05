@@ -266,6 +266,16 @@ Item {
             anchors.fill: parent
             enabled: root.isDir
             keys: ["text/uri-list"]
+
+            // Spring-loaded folders — see FileListItem.qml's matching
+            // Timer: hovering a drag here for a beat navigates into the
+            // folder; leaving before it fires cancels.
+            Timer {
+                interval: 800
+                running: folderDropArea.containsDrag
+                onTriggered: root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
+            }
+
             onDropped: (drop) => {
                 if (!drop.hasUrls) {
                     return

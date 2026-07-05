@@ -211,6 +211,18 @@ Item {
         anchors.fill: parent
         enabled: root.isDir
         keys: ["text/uri-list"]
+
+        // Spring-loaded folders (roadmap item 8): parking a drag over a
+        // folder row for a beat navigates into it, so one drag can reach
+        // a nested destination without dropping halfway. The Timer's
+        // running state simply mirrors containsDrag — moving the drag off
+        // the row before it fires cancels the spring-load.
+        Timer {
+            interval: 800
+            running: folderDropArea.containsDrag
+            onTriggered: root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
+        }
+
         onDropped: (drop) => {
             if (!drop.hasUrls) {
                 return
