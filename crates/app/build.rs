@@ -53,6 +53,7 @@ fn main() {
                 "qml/components/TransferStatus.qml",
                 "qml/components/SelectionToolbar.qml",
                 "qml/components/EmptyState.qml",
+                "qml/components/NewFileDialog.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))

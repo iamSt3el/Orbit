@@ -133,6 +133,11 @@ Window {
         newFolderDialogLoader.item.open()
     }
 
+    function openNewFileDialog() {
+        newFileDialogLoader.active = true
+        newFileDialogLoader.item.open()
+    }
+
     function openViewOptionsMenu(x, y) {
         viewOptionsMenuLoader.active = true
         viewOptionsMenuLoader.item.popup(x, y)
@@ -225,6 +230,7 @@ Window {
     // so there's one place to update if a new popup is added later.
     readonly property bool anyPopupOpen:
         contextMenuLoader.active || newFolderDialogLoader.active ||
+        newFileDialogLoader.active ||
         viewOptionsMenuLoader.active || itemContextMenuLoader.active ||
         renameDialogLoader.active || propertiesDialogLoader.active ||
         deleteConfirmDialogLoader.active || trashContextMenuLoader.active ||
@@ -1049,6 +1055,16 @@ Window {
         sourceComponent: NewFolderDialog {
             onAccepted: (name) => fileModel.createFolder(name)
             onClosed: Qt.callLater(() => newFolderDialogLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: newFileDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: NewFileDialog {
+            onAccepted: (name) => fileModel.createFile(name)
+            onClosed: Qt.callLater(() => newFileDialogLoader.active = false)
         }
     }
 
