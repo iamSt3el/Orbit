@@ -709,13 +709,15 @@ Window {
                                 // delegates (see listBackgroundArea's matching
                                 // comment) so a drop landing on a folder row goes
                                 // to that row's own DropArea, not this one.
-                                // Rejects our own internal drags (dropping one of
-                                // our own items back into the folder it's already
-                                // in is a no-op, not an import) via
-                                // window._internalDragActive rather than
-                                // drop.keys, which doesn't reliably carry the
-                                // source's Drag.keys across this platform's
-                                // native drag-and-drop round-trip.
+                                // An internal drag dropped back into the folder it
+                                // STARTED from is a no-op, not an import — but
+                                // dropped anywhere else (after spring-loading into
+                                // a subfolder mid-drag) it's a move into the
+                                // current folder. window._internalDragActive /
+                                // _internalDragSourceDir, not drop.keys, which
+                                // doesn't reliably carry the source's Drag.keys
+                                // across this platform's native drag-and-drop
+                                // round-trip.
                                 DropArea {
                                     z: -1
                                     anchors.fill: parent
@@ -724,11 +726,11 @@ Window {
                                         if (!drop.hasUrls) {
                                             return
                                         }
-                                        if (window._internalDragActive) {
+                                        if (window._internalDragActive && window._internalDragSourceDir === fileModel.currentPath) {
                                             drop.accepted = false
                                             return
                                         }
-                                        var isMove = drop.proposedAction === Qt.MoveAction
+                                        var isMove = window._internalDragActive || drop.proposedAction === Qt.MoveAction
                                         drop.acceptProposedAction()
                                         var paths = []
                                         for (var i = 0; i < drop.urls.length; i++) {
@@ -913,11 +915,11 @@ Window {
                                         if (!drop.hasUrls) {
                                             return
                                         }
-                                        if (window._internalDragActive) {
+                                        if (window._internalDragActive && window._internalDragSourceDir === fileModel.currentPath) {
                                             drop.accepted = false
                                             return
                                         }
-                                        var isMove = drop.proposedAction === Qt.MoveAction
+                                        var isMove = window._internalDragActive || drop.proposedAction === Qt.MoveAction
                                         drop.acceptProposedAction()
                                         var paths = []
                                         for (var i = 0; i < drop.urls.length; i++) {
