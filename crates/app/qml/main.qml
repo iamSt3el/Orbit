@@ -391,6 +391,31 @@ Window {
                                 // (that lives in fileModel), so it's kept
                                 // here rather than in Rust.
                                 property string selectionAnchor: ""
+
+                                // Watcher-driven diff inserts/removes (and
+                                // this app's own single-item operations)
+                                // animate; `populate` is deliberately unset so
+                                // navigating into a directory never animates
+                                // hundreds of rows at once. The remove
+                                // transition runs while the delegate is being
+                                // destroyed — it touches only opacity/scale,
+                                // never model roles.
+                                add: Transition {
+                                    NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150; easing.type: Easing.OutCubic }
+                                    SpringAnimation { property: "scale"; from: 0.8; to: 1; spring: Motion.springStandard.spring; damping: Motion.springStandard.damping }
+                                }
+                                remove: Transition {
+                                    NumberAnimation { property: "opacity"; to: 0; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+                                    NumberAnimation { property: "scale"; to: 0.9; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+                                }
+                                displaced: Transition {
+                                    SpringAnimation { properties: "x,y"; spring: Motion.springStandard.spring; damping: Motion.springStandard.damping }
+                                    // An interrupted add must not strand a
+                                    // row half-faded/half-scaled.
+                                    NumberAnimation { property: "opacity"; to: 1; duration: 100 }
+                                    NumberAnimation { property: "scale"; to: 1; duration: 100 }
+                                }
+
                                 delegate: FileListItem {
                                     iconSize: window.activeIconProfile.listIcon
                                     iconContainerSize: window.activeIconProfile.listContainer
@@ -598,6 +623,23 @@ Window {
                                 // resize can't leave the last recomputed cellWidth
                                 // stale and the row short of the panel's right edge.
                                 onWidthChanged: forceLayout()
+
+                                // See the matching comment on the ListView's
+                                // transitions — identical treatment for cells.
+                                add: Transition {
+                                    NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150; easing.type: Easing.OutCubic }
+                                    SpringAnimation { property: "scale"; from: 0.8; to: 1; spring: Motion.springStandard.spring; damping: Motion.springStandard.damping }
+                                }
+                                remove: Transition {
+                                    NumberAnimation { property: "opacity"; to: 0; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+                                    NumberAnimation { property: "scale"; to: 0.9; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+                                }
+                                displaced: Transition {
+                                    SpringAnimation { properties: "x,y"; spring: Motion.springStandard.spring; damping: Motion.springStandard.damping }
+                                    NumberAnimation { property: "opacity"; to: 1; duration: 100 }
+                                    NumberAnimation { property: "scale"; to: 1; duration: 100 }
+                                }
+
                                 delegate: FileGridItem {
                                     iconSize: window.activeIconProfile.gridIcon
                                     iconContainerSize: window.activeIconProfile.gridContainer
