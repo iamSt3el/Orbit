@@ -1,9 +1,9 @@
 # UI/UX Roadmap — M3 Expressive
 
-> **Status (2026-07-05):** items 1–6 and 8–12 shipped (specs/plans under
-> `docs/superpowers/`, one commit per feature in git history; items 8–9
-> went straight to implementation by request). Item 7 remains and still
-> needs its own spec. Round-2 candidates are listed at the bottom.
+> **Status (2026-07-05):** items 1–12 all shipped (items 1–6 and 10–12
+> via specs/plans under `docs/superpowers/`; items 7–9 and round-2
+> items 13–14 went straight to implementation by request — one commit
+> per feature in git history). Remaining candidates: 15–26 below.
 
 Candidate UI/UX work, keeping genuine M3 Expressive fidelity (the
 project's #1 goal) front and center. Grounded in the existing component
