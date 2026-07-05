@@ -112,18 +112,56 @@ Window {
     // extra click.
     onAnyPopupOpenChanged: if (!anyPopupOpen) fileViewArea.forceActiveFocus()
 
-    // A same-named alias, not just "fileModel" — `fileModel` itself is an
-    // id, not a property of Window, so `window.fileModel` doesn't exist
-    // (silently evaluates to undefined). Any popup below that's created
-    // via a Loader's sourceComponent AND declares its own `property var
-    // fileModel` needs this alias (`window.fileListModel`) instead of the
-    // bare `fileModel` id — the bare id resolves to that popup's own
-    // not-yet-set property once it's instantiated from inside a Loader's
-    // Component boundary, not the outer FileListModel, leaving it null.
-    // (Confirmed: the un-Loader'd, statically-nested version of these
-    // same popups did not have this problem — it's specific to crossing
-    // a Loader/Component boundary.)
-    property alias fileListModel: fileModel
+    // Tabs (roadmap round-2 item 23): each tab is its own FileListModel
+    // instance; `fileModel` is now a window PROPERTY resolving to the
+    // active tab's model (deliberately the same name the old static id
+    // had, so every binding in this file retargets reactively on tab
+    // switch). initialTabModel below is tab 0 — it also owns the
+    // one-per-app duties (theme watch, startup navigation).
+    property var _tabModels: [initialTabModel]
+    property int _currentTab: 0
+    readonly property var fileModel: _tabModels[Math.min(_currentTab, _tabModels.length - 1)]
+
+    Component {
+        id: tabModelComponent
+        FileListModel {}
+    }
+
+    function newTab() {
+        var model = tabModelComponent.createObject(window)
+        model.navigate(fileModel.currentPath)
+        var tabs = window._tabModels.slice()
+        tabs.push(model)
+        window._tabModels = tabs
+        window._currentTab = tabs.length - 1
+    }
+
+    function closeTab(index) {
+        if (window._tabModels.length <= 1) {
+            return
+        }
+        var activeModel = window.fileModel
+        var tabs = window._tabModels.slice()
+        var closed = tabs.splice(index, 1)[0]
+        // Reassignment order matters: _currentTab must be valid against
+        // BOTH arrays while fileModel's binding re-evaluates.
+        window._currentTab = 0
+        window._tabModels = tabs
+        var newIdx = tabs.indexOf(activeModel)
+        window._currentTab = newIdx >= 0 ? newIdx : Math.min(index, tabs.length - 1)
+        // Tab 0's model is statically declared and can't be destroyed —
+        // it just idles unlisted if closed.
+        if (closed !== initialTabModel) {
+            closed.destroy()
+        }
+    }
+
+    // Same-named accessor for popups created via a Loader's
+    // sourceComponent that declare their own `property var fileModel` —
+    // the bare `fileModel` name resolves to that popup's own not-yet-set
+    // property once instantiated from inside a Loader's Component
+    // boundary, so they bind `window.fileListModel` instead.
+    readonly property var fileListModel: window.fileModel
 
     // viewMode and iconSizeLevel live on fileModel (persisted to
     // settings.json) rather than as plain window properties, so they
@@ -136,18 +174,16 @@ Window {
     })
     readonly property var activeIconProfile: iconSizeProfiles[fileModel.iconSizeLevel] || iconSizeProfiles.medium
 
-    FileListModel {
-        id: fileModel
-
-        // Reactive, not one-shot — themeColorsText is kept live by a
-        // background watcher (FileListModel.startThemeColorsWatch()), so
-        // editing colors.json while the app is running re-applies the
-        // theme automatically, not just at startup.
-        onThemeColorsTextChanged: Color.applyCustomColors(fileModel.themeColorsText)
-
-        onCurrentPathChanged: {
+    // Direction tracking follows the ACTIVE tab: Connections re-targets
+    // when window.fileModel changes. A tab switch itself changes
+    // fileModel without emitting currentPathChanged, so _lastPath can be
+    // stale across tabs — the first navigation in a freshly focused tab
+    // may read as "neutral", which is fine.
+    Connections {
+        target: window.fileModel
+        function onCurrentPathChanged() {
             var oldPath = window._lastPath
-            var newPath = fileModel.currentPath
+            var newPath = window.fileModel.currentPath
             if (oldPath.length === 0) {
                 window._navDirection = "neutral"
             } else if (newPath.startsWith(oldPath === "/" ? "/" : oldPath + "/")) {
@@ -159,6 +195,16 @@ Window {
             }
             window._lastPath = newPath
         }
+    }
+
+    FileListModel {
+        id: initialTabModel
+
+        // Reactive, not one-shot — themeColorsText is kept live by a
+        // background watcher (FileListModel.startThemeColorsWatch()), so
+        // editing colors.json while the app is running re-applies the
+        // theme automatically, not just at startup.
+        onThemeColorsTextChanged: Color.applyCustomColors(initialTabModel.themeColorsText)
 
         Component.onCompleted: {
             // A singleton (Color.qml) can be instantiated before this
@@ -455,6 +501,40 @@ Window {
         }
     }
 
+    // Tabs (round-2 item 23). With a single tab the tab bar is hidden,
+    // so Ctrl+T is the entry point.
+    Shortcut {
+        sequence: "Ctrl+T"
+        onActivated: {
+            if (window.anyPopupOpen) return
+            window.newTab()
+        }
+    }
+
+    Shortcut {
+        sequence: "Ctrl+W"
+        onActivated: {
+            if (window.anyPopupOpen) return
+            window.closeTab(window._currentTab)
+        }
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Tab"
+        onActivated: {
+            if (window.anyPopupOpen) return
+            window._currentTab = (window._currentTab + 1) % window._tabModels.length
+        }
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+Tab"
+        onActivated: {
+            if (window.anyPopupOpen) return
+            window._currentTab = (window._currentTab - 1 + window._tabModels.length) % window._tabModels.length
+        }
+    }
+
     Shortcut {
         sequences: [StandardKey.Cancel]
         onActivated: {
@@ -530,6 +610,135 @@ Window {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     spacing: 0
+
+                    // Tab bar (round-2 item 23) — hidden with one tab
+                    // (Ctrl+T opens the second); chips show each tab's
+                    // folder name, × closes, + opens a sibling of the
+                    // active tab.
+                    Item {
+                        visible: window._tabModels.length > 1
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: visible ? 40 : 0
+                        Layout.minimumHeight: Layout.preferredHeight
+                        Layout.maximumHeight: Layout.preferredHeight
+                        Layout.leftMargin: 8
+
+                        Row {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+
+                            Repeater {
+                                model: window._tabModels
+
+                                delegate: Rectangle {
+                                    id: tabChip
+                                    required property var modelData
+                                    required property int index
+
+                                    readonly property bool active: index === window._currentTab
+                                    readonly property string tabTitle: {
+                                        var p = modelData.currentPath ? modelData.currentPath : ""
+                                        if (p.length === 0 || p === "/") return "Root"
+                                        if (p === modelData.trashPath) return "Trash"
+                                        return p.substring(p.lastIndexOf("/") + 1)
+                                    }
+
+                                    width: Math.min(200, _chipRow.implicitWidth + 24)
+                                    height: 32
+                                    radius: Shape.full
+                                    color: active ? Color.scheme.secondaryContainer : Elevation.surfaceAt(1)
+                                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: window._currentTab = tabChip.index
+                                    }
+
+                                    Row {
+                                        id: _chipRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+
+                                        Text {
+                                            text: tabChip.tabTitle
+                                            elide: Text.ElideMiddle
+                                            width: Math.min(implicitWidth, 150)
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            color: tabChip.active ? Color.scheme.secondaryContainerText : Color.scheme.surfaceVariantText
+                                            font.family: Type.labelLarge.family
+                                            font.weight: Type.labelLarge.weight
+                                            font.pixelSize: Type.labelLarge.size
+                                        }
+
+                                        Item {
+                                            width: 18
+                                            height: 18
+                                            anchors.verticalCenter: parent.verticalCenter
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                radius: Shape.full
+                                                color: Elevation.surfaceAt(4)
+                                                opacity: _tabCloseArea.containsMouse ? 1 : 0
+                                                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                                            }
+
+                                            Icon {
+                                                anchors.centerIn: parent
+                                                content: "close"
+                                                iconSize: 12
+                                                color: tabChip.active ? Color.scheme.secondaryContainerText : Color.scheme.surfaceVariantText
+                                            }
+
+                                            MouseArea {
+                                                id: _tabCloseArea
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: window.closeTab(tabChip.index)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Item {
+                                width: 32
+                                height: 32
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: Shape.full
+                                    color: Elevation.surfaceAt(3)
+                                    opacity: _newTabArea.containsMouse ? 1 : 0
+                                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                                }
+
+                                Icon {
+                                    anchors.centerIn: parent
+                                    content: "add"
+                                    iconSize: 18
+                                    color: Color.scheme.surfaceVariantText
+                                }
+
+                                MouseArea {
+                                    id: _newTabArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: window.newTab()
+                                }
+
+                                Tooltip {
+                                    text: "New tab (Ctrl+T)"
+                                    hovered: _newTabArea.containsMouse
+                                }
+                            }
+                        }
+                    }
 
                     TopAppBar {
                         id: contentHeader
