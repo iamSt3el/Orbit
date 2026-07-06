@@ -17,7 +17,7 @@ Item {
     property string icon: ""
     property real iconSize: 16
     // Radians of breathing room between the progress tip and the track.
-    property real gap: 0.4
+    property real gap: 0.2
 
     // 500ms, not the usual 200 — instances start at 0 and bind their real
     // value on completion (see the Sidebar storage cards), so this Behavior
