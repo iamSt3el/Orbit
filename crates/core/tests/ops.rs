@@ -1,6 +1,6 @@
 use fm_core::ops;
 use std::fs;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tempfile::tempdir;
 
@@ -187,7 +187,7 @@ async fn copy_with_progress_copies_the_file_and_reports_the_final_total() {
     let done = Arc::new(AtomicU64::new(0));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
-    ops::copy_with_progress(src.clone(), dst.clone(), done.clone(), tx)
+    ops::copy_with_progress(src.clone(), dst.clone(), done.clone(), tx, Arc::new(AtomicBool::new(false)))
         .await
         .unwrap();
 
@@ -216,7 +216,7 @@ async fn copy_with_progress_preserves_the_source_permission_bits() {
     let done = Arc::new(AtomicU64::new(0));
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
-    ops::copy_with_progress(src.clone(), dst.clone(), done, tx)
+    ops::copy_with_progress(src.clone(), dst.clone(), done, tx, Arc::new(AtomicBool::new(false)))
         .await
         .unwrap();
 
@@ -237,7 +237,7 @@ async fn copy_with_progress_copies_a_directory_tree() {
     let done = Arc::new(AtomicU64::new(0));
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
-    ops::copy_with_progress(src.clone(), dst.clone(), done.clone(), tx)
+    ops::copy_with_progress(src.clone(), dst.clone(), done.clone(), tx, Arc::new(AtomicBool::new(false)))
         .await
         .unwrap();
 
@@ -259,7 +259,7 @@ async fn move_entry_with_progress_relocates_within_same_filesystem() {
     let done = Arc::new(AtomicU64::new(0));
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
-    ops::move_entry_with_progress(&src, &dst, done, tx)
+    ops::move_entry_with_progress(&src, &dst, done, tx, Arc::new(AtomicBool::new(false)))
         .await
         .unwrap();
 
@@ -325,4 +325,41 @@ fn dir_size_with_progress_returns_zero_for_an_unreadable_path() {
 
     assert_eq!(bytes, 0);
     assert_eq!(items, 0);
+}
+
+#[tokio::test]
+async fn copy_with_progress_cancel_aborts_before_writing() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("big.bin");
+    fs::write(&src, vec![0u8; 1024 * 1024]).unwrap();
+    let dst = dir.path().join("out.bin");
+    let done = Arc::new(AtomicU64::new(0));
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let cancel = Arc::new(AtomicBool::new(true));
+
+    let result = ops::copy_with_progress(src.clone(), dst.clone(), done, tx, cancel).await;
+
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
+    assert!(!dst.exists());
+}
+
+#[tokio::test]
+async fn copy_with_progress_cancel_mid_copy_removes_partial_file() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("big.bin");
+    fs::write(&src, vec![7u8; 8 * 1024 * 1024]).unwrap();
+    let dst = dir.path().join("out.bin");
+    let done = Arc::new(AtomicU64::new(0));
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_setter = cancel.clone();
+    tokio::spawn(async move {
+        let _ = rx.recv().await;
+        cancel_setter.store(true, Ordering::Relaxed);
+    });
+
+    let result = ops::copy_with_progress(src.clone(), dst.clone(), done, tx, cancel).await;
+
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
+    assert!(!dst.exists());
 }

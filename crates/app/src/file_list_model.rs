@@ -47,6 +47,7 @@ pub mod qobject {
         #[qproperty(i64, transfer_done_bytes, cxx_name = "transferDoneBytes")]
         #[qproperty(i64, transfer_total_bytes, cxx_name = "transferTotalBytes")]
         #[qproperty(QString, transfer_speed_label, cxx_name = "transferSpeedLabel")]
+        #[qproperty(bool, transfer_active, cxx_name = "transferActive")]
         // Reactive mirror of selected.len(). selectedCount() (the
         // invokable below) serves imperative callers; this property is
         // what QML *binds* to — the floating selection toolbar shows and
@@ -271,6 +272,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "mountVolume"]
         fn mount_volume(self: Pin<&mut FileListModel>, uri: &QString, mount_path: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "cancelTransfer"]
+        fn cancel_transfer(self: Pin<&mut FileListModel>);
     }
 
     unsafe extern "RustQt" {
@@ -672,6 +677,8 @@ pub struct FileListModelRust {
     folder_scan_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
     volumes_watch_started: bool,
     gvfs_watcher: Option<fm_core::watcher::DirWatcher>,
+    transfer_active: bool,
+    transfer_cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// The arguments transfer_batch was called with, parked while the
@@ -771,6 +778,8 @@ impl Default for FileListModelRust {
             folder_scan_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             volumes_watch_started: false,
             gvfs_watcher: None,
+            transfer_active: false,
+            transfer_cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -1754,6 +1763,12 @@ impl qobject::FileListModel {
         });
     }
 
+    fn cancel_transfer(mut self: core::pin::Pin<&mut Self>) {
+        self.transfer_cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.as_mut().set_busy_label(QString::from("Cancelling…"));
+    }
+
     fn empty_trash(mut self: core::pin::Pin<&mut Self>) {
         if let Err(e) = runtime().block_on(fm_core::trash::empty_trash()) {
             eprintln!("empty_trash failed: {e}");
@@ -2334,6 +2349,9 @@ impl qobject::FileListModel {
         // folder took.
         self.as_mut().set_transfer_total_bytes(0);
         self.as_mut().set_transfer_speed_label(QString::from(""));
+        self.as_mut().set_transfer_active(true);
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.as_mut().rust_mut().transfer_cancel = cancel.clone();
 
         // Shared across every item in the batch and never reset between
         // them — copy_with_progress/move_entry_with_progress only ever
@@ -2389,6 +2407,9 @@ impl qobject::FileListModel {
             let mut failed: usize = 0;
             let mut succeeded: Vec<(PathBuf, PathBuf)> = Vec::new();
             for src in sources {
+                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
                 let Some(file_name) = src.file_name().map(|n| n.to_os_string()) else {
                     continue;
                 };
@@ -2426,6 +2447,7 @@ impl qobject::FileListModel {
                         &dest,
                         done_counter.clone(),
                         progress_tx.clone(),
+                        cancel.clone(),
                     )
                     .await
                 } else {
@@ -2434,23 +2456,32 @@ impl qobject::FileListModel {
                         dest.clone(),
                         done_counter.clone(),
                         progress_tx.clone(),
+                        cancel.clone(),
                     )
                     .await
                 };
                 match result {
                     Ok(()) => succeeded.push((src, dest)),
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => break,
                     Err(e) => {
                         eprintln!("{verb} failed for {}: {e}", src.display());
                         failed += 1;
                     }
                 }
             }
+            let was_cancelled = cancel.load(std::sync::atomic::Ordering::Relaxed);
 
             let _ = qt_thread.queue(move |mut model| {
                 model.as_mut().set_is_busy(false);
+                model.as_mut().set_transfer_active(false);
                 model.as_mut().set_transfer_done_bytes(0);
                 model.as_mut().set_transfer_total_bytes(0);
                 model.as_mut().refresh_entries_diff();
+                if was_cancelled {
+                    model
+                        .as_mut()
+                        .operation_completed(QString::from("Transfer cancelled"), false);
+                }
                 if failed > 0 {
                     model.as_mut().error_occurred(QString::from(&format!(
                         "Couldn't {verb} {}",
@@ -2465,7 +2496,9 @@ impl qobject::FileListModel {
                     };
                     let desc = op.describe();
                     model.as_mut().rust_mut().journal.record(op);
-                    model.as_mut().operation_completed(QString::from(&desc), true);
+                    if !was_cancelled {
+                        model.as_mut().operation_completed(QString::from(&desc), true);
+                    }
                 }
             });
         });

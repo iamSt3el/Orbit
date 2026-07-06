@@ -13,6 +13,9 @@ Item {
     property real doneBytes: 0
     property real totalBytes: 0
     property string speedLabel: ""
+    property bool cancellable: false
+
+    signal cancelRequested
 
     readonly property real progress: totalBytes > 0 ? Math.min(1, doneBytes / totalBytes) : 0
 
@@ -36,14 +39,58 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
 
-        Text {
-            text: root.label
+        Item {
             width: parent.width
-            elide: Text.ElideRight
-            color: Color.scheme.surfaceText
-            font.family: Type.bodyMedium.family
-            font.weight: Type.bodyMedium.weight
-            font.pixelSize: Type.bodyMedium.size
+            height: 20
+
+            Text {
+                anchors.left: parent.left
+                anchors.right: _cancelButton.visible ? _cancelButton.left : parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.label
+                elide: Text.ElideRight
+                color: Color.scheme.surfaceText
+                font.family: Type.bodyMedium.family
+                font.weight: Type.bodyMedium.weight
+                font.pixelSize: Type.bodyMedium.size
+            }
+
+            Item {
+                id: _cancelButton
+                width: 20
+                height: 20
+                visible: root.cancellable
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Shape.full
+                    color: Elevation.surfaceAt(4)
+                    opacity: _cancelArea.containsMouse ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                }
+
+                Icon {
+                    anchors.centerIn: parent
+                    content: "close"
+                    iconSize: 14
+                    color: Color.scheme.surfaceVariantText
+                }
+
+                MouseArea {
+                    id: _cancelArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.cancelRequested()
+                }
+
+                Tooltip {
+                    text: "Cancel"
+                    hovered: _cancelArea.containsMouse
+                }
+            }
         }
 
         LinearWavyProgressBar {

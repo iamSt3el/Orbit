@@ -412,6 +412,8 @@ Rectangle {
         anchors.margins: 10
         active: root.fileModel ? root.fileModel.isBusy : false
         label: root.fileModel ? root.fileModel.busyLabel : ""
+        cancellable: root.fileModel ? root.fileModel.transferActive === true : false
+        onCancelRequested: if (root.fileModel) root.fileModel.cancelTransfer()
         doneBytes: root.fileModel ? root.fileModel.transferDoneBytes : 0
         totalBytes: root.fileModel ? root.fileModel.transferTotalBytes : 0
         speedLabel: root.fileModel ? root.fileModel.transferSpeedLabel : ""

@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -179,8 +179,12 @@ pub fn copy_with_progress(
     dst: PathBuf,
     done: Arc<AtomicU64>,
     tx: UnboundedSender<u64>,
+    cancel: Arc<AtomicBool>,
 ) -> Pin<Box<dyn Future<Output = io::Result<()>> + Send>> {
     Box::pin(async move {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+        }
         let metadata = tokio::fs::metadata(&src).await?;
 
         if metadata.is_dir() {
@@ -189,7 +193,8 @@ pub fn copy_with_progress(
             while let Some(dir_entry) = read_dir.next_entry().await? {
                 let child_src = dir_entry.path();
                 let child_dst = dst.join(dir_entry.file_name());
-                copy_with_progress(child_src, child_dst, done.clone(), tx.clone()).await?;
+                copy_with_progress(child_src, child_dst, done.clone(), tx.clone(), cancel.clone())
+                    .await?;
             }
             Ok(())
         } else {
@@ -199,6 +204,11 @@ pub fn copy_with_progress(
             let mut writer = tokio::fs::File::create(&dst).await?;
             let mut buf = vec![0u8; 1024 * 1024];
             loop {
+                if cancel.load(Ordering::Relaxed) {
+                    drop(writer);
+                    let _ = tokio::fs::remove_file(&dst).await;
+                    return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+                }
                 let n = reader.read(&mut buf).await?;
                 if n == 0 {
                     break;
@@ -230,11 +240,12 @@ pub async fn move_entry_with_progress(
     dst: &Path,
     done: Arc<AtomicU64>,
     tx: UnboundedSender<u64>,
+    cancel: Arc<AtomicBool>,
 ) -> io::Result<()> {
     match tokio::fs::rename(src, dst).await {
         Ok(()) => Ok(()),
         Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
-            copy_with_progress(src.to_path_buf(), dst.to_path_buf(), done, tx).await?;
+            copy_with_progress(src.to_path_buf(), dst.to_path_buf(), done, tx, cancel).await?;
             remove_all(src).await
         }
         Err(e) => Err(e),
