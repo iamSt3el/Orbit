@@ -95,7 +95,7 @@ Window {
     }
 
     // Preview pane visibility (round-2 item 22) — session-only state,
-    // toggled by F9 or the header's info button.
+    // toggled by F9.
     property bool previewVisible: false
 
     // Direction of the most recent navigation — "forward" (into a child),
@@ -604,6 +604,8 @@ Window {
             color: Color.scheme.surfaceContainer
             clip: true
 
+            DecorativeShapesBackground {}
+
             RowLayout {
                 anchors.fill: parent
                 spacing: 0
@@ -611,14 +613,16 @@ Window {
                 Sidebar {
                     Layout.fillHeight: true
                     Layout.preferredWidth: 200
-                    fileModel: fileModel
-                    // The extra `fileModel ?` guards here and on the
-                    // header below: window.fileModel is transiently
-                    // undefined while the Window's properties initialize
-                    // (the tab array's id reference resolves at component
-                    // completion), so startup-evaluated bindings must not
-                    // dereference it bare.
-                    currentPath: fileModel && fileModel.currentPath ? fileModel.currentPath : ""
+                    // window.fileModel, NOT bare fileModel: since tabs
+                    // turned fileModel into a window property (no id),
+                    // every binding written ON an instance that declares
+                    // its own `property var fileModel` resolves the bare
+                    // name to that instance's own property — so
+                    // `fileModel: fileModel` silently binds to itself.
+                    // This is the Loader-shadowing trap generalized to
+                    // ALL instantiations now that the id is gone.
+                    fileModel: window.fileModel
+                    currentPath: window.fileModel && window.fileModel.currentPath ? window.fileModel.currentPath : ""
                     onSettingsRequested: window.openSettingsDialog()
                     onTrashContextMenuRequested: (x, y) => window.openTrashContextMenu(x, y)
                     onPinnedContextMenuRequested: (x, y, path) => window.openPinnedContextMenu(x, y, path)
@@ -769,18 +773,20 @@ Window {
                         Layout.preferredHeight: 56
                         Layout.minimumHeight: 56
                         Layout.maximumHeight: 56
-                        title: fileModel && fileModel.currentPath ? fileModel.currentPath : ""
-                        showBackButton: fileModel ? (fileModel.currentPath && fileModel.currentPath !== "/") === true : false
-                        viewMode: fileModel ? fileModel.viewMode : "list"
-                        fileModel: fileModel
+                        // window.fileModel throughout — see the Sidebar
+                        // instance's comment: TopAppBar declares its own
+                        // `property var fileModel`, which shadows the
+                        // bare name in every binding on this instance.
+                        title: window.fileModel && window.fileModel.currentPath ? window.fileModel.currentPath : ""
+                        showBackButton: window.fileModel ? (window.fileModel.currentPath && window.fileModel.currentPath !== "/") === true : false
+                        viewMode: window.fileModel ? window.fileModel.viewMode : "list"
+                        fileModel: window.fileModel
                         viewOptionsOpen: viewOptionsMenuLoader.active
-                        canGoBack: fileModel ? fileModel.canGoBack : false
-                        canGoForward: fileModel ? fileModel.canGoForward : false
-                        previewOpen: window.previewVisible
-                        onPreviewToggled: window.previewVisible = !window.previewVisible
-                        onBackClicked: fileModel.goBack()
-                        onForwardClicked: fileModel.goForward()
-                        onUpClicked: fileModel.navigate(window.parentPath(fileModel.currentPath))
+                        canGoBack: window.fileModel ? window.fileModel.canGoBack : false
+                        canGoForward: window.fileModel ? window.fileModel.canGoForward : false
+                        onBackClicked: window.fileModel.goBack()
+                        onForwardClicked: window.fileModel.goForward()
+                        onUpClicked: window.fileModel.navigate(window.parentPath(window.fileModel.currentPath))
                         onListViewRequested: {
                             fileModel.viewMode = "list"
                             fileModel.saveSettings()
@@ -1396,8 +1402,6 @@ Window {
                             }
                         }
 
-                        DecorativeShapesBackground {}
-
                         Loader {
                             id: viewLoader
                             anchors.fill: parent
@@ -1688,8 +1692,7 @@ Window {
                     }
                 }
 
-                // Preview/details pane (round-2 item 22) — F9 or the
-                // header's info button.
+                // Preview/details pane (round-2 item 22) — F9.
                 PreviewPane {
                     visible: window.previewVisible
                     Layout.fillHeight: true

@@ -3,11 +3,6 @@ import "../shapes" as MaterialShapes
 import "../shapes/material-shapes.js" as MaterialShapesFn
 import com.filemanager.app 1.0
 
-// Purely ambient texture behind the file list/grid — two large, low-opacity
-// M3 shapes bleeding off opposite corners. Static (no morph, no animation):
-// this is background decoration, not an interactive element, and the
-// parent's `clip: true` crops the off-corner bleed. No MouseArea, so it
-// can never intercept clicks or drag-select over the empty area behind it.
 Item {
     anchors.fill: parent
 
@@ -25,11 +20,37 @@ Item {
     MaterialShapes.ShapeCanvas {
         width: 220
         height: 220
-        anchors.left: parent.left
+        x: parent.width * 0.3
         anchors.bottom: parent.bottom
-        anchors.leftMargin: -60
-        anchors.bottomMargin: -60
+        anchors.bottomMargin: -70
         color: Qt.alpha(Color.scheme.primary, 0.05)
         roundedPolygon: MaterialShapesFn.getPentagon()
+    }
+
+    MaterialShapes.ShapeCanvas {
+        width: 300
+        height: 300
+        x: parent.width * 0.52
+        y: parent.height * 0.38
+        color: Qt.alpha(Color.scheme.primary, 0.04)
+        roundedPolygon: MaterialShapesFn.getSunny()
+    }
+
+    MaterialShapes.ShapeCanvas {
+        width: 180
+        height: 180
+        x: parent.width * 0.32
+        y: parent.height * 0.16
+        color: Qt.alpha(Color.scheme.primary, 0.04)
+        roundedPolygon: MaterialShapesFn.getClover4Leaf()
+    }
+
+    MaterialShapes.ShapeCanvas {
+        width: 160
+        height: 160
+        x: parent.width * 0.78
+        y: parent.height * 0.68
+        color: Qt.alpha(Color.scheme.primary, 0.04)
+        roundedPolygon: MaterialShapesFn.getGem()
     }
 }
