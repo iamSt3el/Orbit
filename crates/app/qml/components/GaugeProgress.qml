@@ -19,8 +19,17 @@ Item {
     // Radians of breathing room between the progress tip and the track.
     property real gap: 0.4
 
+    // 500ms, not the usual 200 — instances start at 0 and bind their real
+    // value on completion (see the Sidebar storage cards), so this Behavior
+    // doubles as the entrance sweep.
     Behavior on progress {
-        NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
+        NumberAnimation { duration: 500; easing.type: Easing.OutCubic }
+    }
+
+    // Smooth primary→error crossfade when a capacity threshold flips the
+    // color; the Canvas repaints along the way via on_FillChanged.
+    Behavior on progressColor {
+        ColorAnimation { duration: 200 }
     }
 
     Canvas {
@@ -91,7 +100,9 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Math.round(root.progress * 100) + "%"
-            color: Color.scheme.primary
+            // Follows the arc (not always primary) so a capacity warning
+            // recolors the number too.
+            color: root.progressColor
             font.family: Type.titleSmall.family
             font.weight: Type.titleSmall.weight
             font.pixelSize: Type.titleSmall.size

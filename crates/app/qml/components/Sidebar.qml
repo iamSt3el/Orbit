@@ -250,6 +250,8 @@ Rectangle {
                     id: volCard
                     required property var modelData
                     readonly property real usedBytes: modelData.total - modelData.avail
+                    readonly property real usedFrac: modelData.total > 0
+                        ? usedBytes / modelData.total : 0
                     readonly property bool isActive: modelData.mount === root.currentPath
 
                     width: parent.width
@@ -273,8 +275,18 @@ Rectangle {
                             width: 64
                             height: 64
                             anchors.verticalCenter: parent.verticalCenter
-                            progress: volCard.modelData.total > 0
-                                ? volCard.usedBytes / volCard.modelData.total : 0
+                            // Starts at 0 and binds the real value only on
+                            // completion: a property-initializer value would
+                            // be set directly (no animation), but a post-
+                            // completion assignment runs the Behavior — the
+                            // arc sweeps in when the card appears.
+                            progress: 0
+                            Component.onCompleted: progress = Qt.binding(function() {
+                                return volCard.usedFrac
+                            })
+                            // A nearly-full disk announces itself.
+                            progressColor: volCard.usedFrac >= 0.9
+                                ? Color.scheme.error : Color.scheme.primary
                             icon: volCard.modelData.mount === "/" ? "hard_drive" : "usb"
                             iconSize: 12
                         }
@@ -346,13 +358,12 @@ Rectangle {
                         }
                     }
 
-                    MouseArea {
+                    Ripple {
                         id: _volArea
                         // Below the eject button in z so eject clicks win.
                         z: -1
                         anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
+                        radius: parent.radius
                         onClicked: if (root.fileModel) root.fileModel.navigate(volCard.modelData.mount)
                     }
                 }
