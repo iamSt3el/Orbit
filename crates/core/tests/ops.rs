@@ -266,3 +266,63 @@ async fn move_entry_with_progress_relocates_within_same_filesystem() {
     assert!(!src.exists());
     assert_eq!(fs::read_to_string(&dst).unwrap(), "hello");
 }
+
+#[test]
+fn dir_size_with_progress_totals_bytes_and_items_recursively() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("a.txt"), vec![0u8; 100]).unwrap();
+    fs::create_dir(dir.path().join("sub")).unwrap();
+    fs::write(dir.path().join("sub/b.txt"), vec![0u8; 50]).unwrap();
+    fs::write(dir.path().join("sub/c.txt"), vec![0u8; 25]).unwrap();
+
+    let (bytes, items) = ops::dir_size_with_progress(dir.path(), &mut |_, _| true);
+
+    assert_eq!(bytes, 175);
+    // a.txt + sub + sub/b.txt + sub/c.txt — directories count as items.
+    assert_eq!(items, 4);
+}
+
+#[test]
+fn dir_size_with_progress_reports_running_totals_to_the_callback() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("a.txt"), vec![0u8; 10]).unwrap();
+    fs::write(dir.path().join("b.txt"), vec![0u8; 20]).unwrap();
+
+    let mut calls: Vec<(u64, u64)> = Vec::new();
+    let (bytes, items) = ops::dir_size_with_progress(dir.path(), &mut |b, i| {
+        calls.push((b, i));
+        true
+    });
+
+    assert_eq!(bytes, 30);
+    assert_eq!(items, 2);
+    assert_eq!(calls.len(), 2);
+    // The last callback carries the final totals.
+    assert_eq!(*calls.last().unwrap(), (30, 2));
+}
+
+#[test]
+fn dir_size_with_progress_aborts_when_the_callback_returns_false() {
+    let dir = tempdir().unwrap();
+    for n in 0..10 {
+        fs::write(dir.path().join(format!("f{n}.txt")), vec![0u8; 10]).unwrap();
+    }
+
+    let mut calls = 0u64;
+    let (_, items) = ops::dir_size_with_progress(dir.path(), &mut |_, _| {
+        calls += 1;
+        calls < 3
+    });
+
+    assert_eq!(calls, 3);
+    assert!(items < 10, "walk kept going after the callback said stop");
+}
+
+#[test]
+fn dir_size_with_progress_returns_zero_for_an_unreadable_path() {
+    let (bytes, items) =
+        ops::dir_size_with_progress(std::path::Path::new("/nonexistent/nope"), &mut |_, _| true);
+
+    assert_eq!(bytes, 0);
+    assert_eq!(items, 0);
+}

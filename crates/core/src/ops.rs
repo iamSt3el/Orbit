@@ -111,6 +111,61 @@ pub fn path_size(path: &Path) -> u64 {
     }
 }
 
+/// Recursively totals a directory's bytes and entry count, invoking
+/// `progress(bytes_so_far, items_so_far)` once per entry encountered.
+/// Items count every entry recursively — files AND directories — matching
+/// Nautilus's Properties "contents" semantics. Returning `false` from the
+/// callback aborts the walk early; the totals accumulated so far are
+/// returned either way. Unreadable directories are skipped silently.
+pub fn dir_size_with_progress(
+    path: &Path,
+    progress: &mut impl FnMut(u64, u64) -> bool,
+) -> (u64, u64) {
+    let mut bytes = 0u64;
+    let mut items = 0u64;
+    dir_size_walk(path, &mut bytes, &mut items, progress);
+    (bytes, items)
+}
+
+/// Returns false if the callback asked to abort (propagates up the
+/// recursion so the whole walk unwinds immediately).
+fn dir_size_walk(
+    path: &Path,
+    bytes: &mut u64,
+    items: &mut u64,
+    progress: &mut impl FnMut(u64, u64) -> bool,
+) -> bool {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return true;
+    };
+    for entry in entries.flatten() {
+        // metadata() on a DirEntry uses lstat on Unix (doesn't follow
+        // symlinks), so a symlink counts its own small size, never the
+        // target's — avoiding both double-counting and symlink-cycle
+        // infinite recursion.
+        match entry.metadata() {
+            Ok(metadata) if metadata.is_dir() => {
+                *items += 1;
+                if !progress(*bytes, *items) {
+                    return false;
+                }
+                if !dir_size_walk(&entry.path(), bytes, items, progress) {
+                    return false;
+                }
+            }
+            Ok(metadata) => {
+                *items += 1;
+                *bytes += metadata.len();
+                if !progress(*bytes, *items) {
+                    return false;
+                }
+            }
+            Err(_) => {}
+        }
+    }
+    true
+}
+
 /// Like `copy`, but reads/writes in chunks instead of delegating to
 /// `tokio::fs::copy`'s single OS-level call, so it can report progress —
 /// `done` accumulates total bytes copied across the whole tree (shared
