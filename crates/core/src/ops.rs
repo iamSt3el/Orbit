@@ -198,35 +198,89 @@ pub fn copy_with_progress(
             }
             Ok(())
         } else {
-            use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-            let mut reader = tokio::fs::File::open(&src).await?;
-            let mut writer = tokio::fs::File::create(&dst).await?;
-            let mut buf = vec![0u8; 1024 * 1024];
-            loop {
-                if cancel.load(Ordering::Relaxed) {
-                    drop(writer);
-                    let _ = tokio::fs::remove_file(&dst).await;
-                    return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
-                }
-                let n = reader.read(&mut buf).await?;
-                if n == 0 {
-                    break;
-                }
-                writer.write_all(&buf[..n]).await?;
-                let total = done.fetch_add(n as u64, Ordering::Relaxed) + n as u64;
-                let _ = tx.send(total);
-            }
-            // Surface any buffered write error here instead of losing it
-            // in the file's silent drop.
-            writer.flush().await?;
-            // tokio::fs::copy (the non-progress path) preserves mode bits;
-            // a manual read/write loop must do it itself or every copied
-            // executable silently loses its +x bit.
-            tokio::fs::set_permissions(&dst, metadata.permissions()).await?;
-            Ok(())
+            let len = metadata.len();
+            let permissions = metadata.permissions();
+            tokio::task::spawn_blocking(move || {
+                copy_file_blocking(&src, &dst, len, permissions, &done, &tx, &cancel)
+            })
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?
         }
     })
+}
+
+fn copy_file_blocking(
+    src: &Path,
+    dst: &Path,
+    len: u64,
+    permissions: std::fs::Permissions,
+    done: &Arc<AtomicU64>,
+    tx: &UnboundedSender<u64>,
+    cancel: &Arc<AtomicBool>,
+) -> io::Result<()> {
+    use std::io::{Read, Write};
+    use std::os::fd::AsRawFd;
+
+    let mut reader = std::fs::File::open(src)?;
+    let mut writer = std::fs::File::create(dst)?;
+    let mut remaining = len;
+    let mut use_fallback = false;
+    while remaining > 0 {
+        if cancel.load(Ordering::Relaxed) {
+            let _ = std::fs::remove_file(dst);
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+        }
+        let chunk = remaining.min(1024 * 1024) as usize;
+        let copied = unsafe {
+            libc::copy_file_range(
+                reader.as_raw_fd(),
+                std::ptr::null_mut(),
+                writer.as_raw_fd(),
+                std::ptr::null_mut(),
+                chunk,
+                0,
+            )
+        };
+        if copied < 0 {
+            let e = io::Error::last_os_error();
+            match e.raw_os_error() {
+                Some(libc::EXDEV) | Some(libc::EINVAL) | Some(libc::ENOSYS)
+                | Some(libc::EOPNOTSUPP) => {
+                    use_fallback = true;
+                    break;
+                }
+                _ => {
+                    let _ = std::fs::remove_file(dst);
+                    return Err(e);
+                }
+            }
+        } else if copied == 0 {
+            break;
+        } else {
+            remaining -= copied as u64;
+            let total = done.fetch_add(copied as u64, Ordering::Relaxed) + copied as u64;
+            let _ = tx.send(total);
+        }
+    }
+    if use_fallback {
+        let mut buf = vec![0u8; 1024 * 1024];
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                let _ = std::fs::remove_file(dst);
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+            }
+            let n = reader.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            writer.write_all(&buf[..n])?;
+            let total = done.fetch_add(n as u64, Ordering::Relaxed) + n as u64;
+            let _ = tx.send(total);
+        }
+        writer.flush()?;
+    }
+    std::fs::set_permissions(dst, permissions)?;
+    Ok(())
 }
 
 /// Like `move_entry`, but reports progress the same way `copy_with_progress`

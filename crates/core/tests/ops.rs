@@ -363,3 +363,21 @@ async fn copy_with_progress_cancel_mid_copy_removes_partial_file() {
     assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
     assert!(!dst.exists());
 }
+
+#[tokio::test]
+async fn copy_with_progress_handles_empty_files() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("empty.txt");
+    fs::write(&src, b"").unwrap();
+    let dst = dir.path().join("out.txt");
+    let done = Arc::new(AtomicU64::new(0));
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+
+    ops::copy_with_progress(src.clone(), dst.clone(), done, tx, Arc::new(AtomicBool::new(false)))
+        .await
+        .unwrap();
+
+    assert!(dst.exists());
+    assert_eq!(fs::metadata(&dst).unwrap().len(), 0);
+}
+
