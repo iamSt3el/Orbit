@@ -92,6 +92,13 @@ pub mod qobject {
         // \u{1f}device". Refreshed by refreshVolumes() — the sidebar
         // polls it on a coarse timer; there's no mount watcher.
         #[qproperty(QString, volumes_text, cxx_name = "volumesText")]
+        // Live folder-size scan for the Properties dialog (round-3): the
+        // dialog opens instantly and a background walk ticks these until
+        // folderScanRunning drops back to false — see
+        // start_folder_size_scan().
+        #[qproperty(i64, folder_scan_bytes, cxx_name = "folderScanBytes")]
+        #[qproperty(i32, folder_scan_items, cxx_name = "folderScanItems")]
+        #[qproperty(bool, folder_scan_running, cxx_name = "folderScanRunning")]
         type FileListModel = super::FileListModelRust;
     }
 
@@ -444,13 +451,17 @@ pub mod qobject {
         #[cxx_name = "entryAbsolutePath"]
         fn entry_absolute_path(self: &FileListModel, name: &QString) -> QString;
 
+        /// Kicks off (or restarts) the background folder-size walk whose
+        /// progress lands in the folderScan* qproperties.
         #[qinvokable]
-        #[cxx_name = "folderItemCount"]
-        fn folder_item_count(self: &FileListModel, name: &QString) -> i32;
+        #[cxx_name = "startFolderSizeScan"]
+        fn start_folder_size_scan(self: Pin<&mut FileListModel>, name: &QString);
 
+        /// Aborts any in-flight walk (generation bump — the walker's
+        /// callback notices and unwinds).
         #[qinvokable]
-        #[cxx_name = "folderSize"]
-        fn folder_size(self: &FileListModel, name: &QString) -> i64;
+        #[cxx_name = "cancelFolderSizeScan"]
+        fn cancel_folder_size_scan(self: Pin<&mut FileListModel>);
 
         #[qinvokable]
         #[cxx_name = "readThemeColorsFile"]
@@ -645,6 +656,16 @@ pub struct FileListModelRust {
     /// A paste/drop parked by the conflict pre-scan (round-2 item 15),
     /// waiting for resolveConflicts() to pick a mode.
     pending_transfer: Option<PendingTransfer>,
+    /// Backings for the folderScan* qproperties — see
+    /// start_folder_size_scan().
+    folder_scan_bytes: i64,
+    folder_scan_items: i32,
+    folder_scan_running: bool,
+    /// Stale-guard for the background folder-size walk. Arc'd (unlike
+    /// listing_generation) because the walker thread must observe a
+    /// cancel MID-WALK to stop burning I/O, not merely have its result
+    /// dropped on arrival.
+    folder_scan_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 /// The arguments transfer_batch was called with, parked while the
@@ -738,6 +759,10 @@ impl Default for FileListModelRust {
             displayed_total_bytes: 0,
             volumes_text: QString::from(""),
             pending_transfer: None,
+            folder_scan_bytes: 0,
+            folder_scan_items: 0,
+            folder_scan_running: false,
+            folder_scan_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
 }
@@ -2470,25 +2495,59 @@ impl qobject::FileListModel {
         QString::from(&current.join(name.to_string()).display().to_string())
     }
 
-    /// A cheap, synchronous immediate-children count for the Properties
-    /// dialog.
-    fn folder_item_count(&self, name: &QString) -> i32 {
-        let current = PathBuf::from(self.current_path.to_string());
-        let target = current.join(name.to_string());
-        std::fs::read_dir(&target)
-            .map(|entries| entries.count() as i32)
-            .unwrap_or(0)
+    /// Spawns a cancellable background walk of current_path/name, ticking
+    /// the folderScan* qproperties at most every ~100ms. Guarded by
+    /// folder_scan_generation on BOTH sides: the walker aborts mid-walk
+    /// when superseded/cancelled, and queued updates are dropped on the
+    /// Qt thread if stale by the time they run.
+    fn start_folder_size_scan(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        use std::sync::atomic::Ordering;
+
+        let target = PathBuf::from(self.current_path.to_string()).join(name.to_string());
+        let shared = self.folder_scan_generation.clone();
+        let generation = shared.fetch_add(1, Ordering::SeqCst) + 1;
+        self.as_mut().set_folder_scan_bytes(0);
+        self.as_mut().set_folder_scan_items(0);
+        self.as_mut().set_folder_scan_running(true);
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn_blocking(move || {
+            let mut last_tick = std::time::Instant::now();
+            let (bytes, items) =
+                fm_core::ops::dir_size_with_progress(&target, &mut |bytes, items| {
+                    if shared.load(Ordering::SeqCst) != generation {
+                        return false;
+                    }
+                    if last_tick.elapsed() >= std::time::Duration::from_millis(100) {
+                        last_tick = std::time::Instant::now();
+                        let _ = qt_thread.queue(move |mut model| {
+                            if model.folder_scan_generation.load(Ordering::SeqCst) != generation {
+                                return;
+                            }
+                            model.as_mut().set_folder_scan_bytes(bytes as i64);
+                            model.as_mut().set_folder_scan_items(items as i32);
+                        });
+                    }
+                    true
+                });
+            if shared.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            let _ = qt_thread.queue(move |mut model| {
+                if model.folder_scan_generation.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                model.as_mut().set_folder_scan_bytes(bytes as i64);
+                model.as_mut().set_folder_scan_items(items as i32);
+                model.as_mut().set_folder_scan_running(false);
+            });
+        });
     }
 
-    /// A true recursive folder size for the Properties dialog, walking the
-    /// whole tree synchronously. This blocks the UI thread for as long as
-    /// the walk takes — fine for a typical folder, but a folder with a
-    /// very large number of files/subdirectories (or a slow filesystem)
-    /// will make the Properties dialog visibly stall while it opens.
-    fn folder_size(&self, name: &QString) -> i64 {
-        let current = PathBuf::from(self.current_path.to_string());
-        let target = current.join(name.to_string());
-        dir_size(&target) as i64
+    fn cancel_folder_size_scan(mut self: core::pin::Pin<&mut Self>) {
+        self.folder_scan_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.as_mut().set_folder_scan_running(false);
     }
 
     /// Reads themeColorsPath's raw contents for Color.qml to JSON.parse.
@@ -2878,24 +2937,6 @@ fn unique_paste_destination(dest_dir: &std::path::Path, name: &std::path::Path) 
         n += 1;
     }
     candidate
-}
-
-fn dir_size(path: &std::path::Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return 0;
-    };
-    entries
-        .flatten()
-        .map(|entry| match entry.metadata() {
-            // metadata() uses lstat on Unix (doesn't follow symlinks), so
-            // a symlink counts its own small size, never the target's —
-            // avoiding both double-counting and symlink-cycle infinite
-            // recursion.
-            Ok(metadata) if metadata.is_dir() => dir_size(&entry.path()),
-            Ok(metadata) => metadata.len(),
-            Err(_) => 0,
-        })
-        .sum()
 }
 
 /// Names of every entry between `from_name` and `to_name` inclusive, in
