@@ -24,27 +24,47 @@ Rectangle {
     readonly property var pinnedFolders: fileModel && fileModel.pinnedFoldersJoined.length > 0
         ? fileModel.pinnedFoldersJoined.split("\n") : []
 
-    // Mounted volumes (round-2 item 24) — parsed from the model's
-    // volumesText, refreshed on a coarse poll (there's no mount watcher).
-    readonly property var volumes: {
-        if (!fileModel || fileModel.volumesText.length === 0) {
-            return []
-        }
-        var out = []
-        var lines = fileModel.volumesText.split("\n")
+    readonly property string _volumesText: fileModel ? fileModel.volumesText : ""
+    on_VolumesTextChanged: syncVolumes()
+
+    ListModel { id: volumesModel }
+
+    function syncVolumes() {
+        var lines = _volumesText.length > 0 ? _volumesText.split("\n") : []
+        var seen = {}
         for (var i = 0; i < lines.length; i++) {
             var f = lines[i].split("\u001f")
-            if (f.length === 5) {
-                out.push({
-                    label: f[0],
-                    mount: f[1],
-                    total: Number(f[2]),
-                    avail: Number(f[3]),
-                    device: f[4]
-                })
+            if (f.length !== 7) {
+                continue
+            }
+            var entry = {
+                label: f[0],
+                mount: f[1],
+                total: Number(f[2]),
+                avail: Number(f[3]),
+                device: f[4],
+                kind: f[5],
+                mounted: f[6] === "1"
+            }
+            seen[entry.mount] = true
+            var found = -1
+            for (var j = 0; j < volumesModel.count; j++) {
+                if (volumesModel.get(j).mount === entry.mount) {
+                    found = j
+                    break
+                }
+            }
+            if (found >= 0) {
+                volumesModel.set(found, entry)
+            } else {
+                volumesModel.append(entry)
             }
         }
-        return out
+        for (var k = volumesModel.count - 1; k >= 0; k--) {
+            if (!seen[volumesModel.get(k).mount]) {
+                volumesModel.remove(k)
+            }
+        }
     }
 
     Timer {
@@ -222,7 +242,7 @@ Rectangle {
         }
 
         Text {
-            visible: root.volumes.length > 0
+            visible: volumesModel.count > 0
             text: "Storage"
             leftPadding: 10
             topPadding: 14
@@ -233,33 +253,32 @@ Rectangle {
             font.pixelSize: Type.labelMedium.size
         }
 
-        // One full-width gauge card per mounted volume. This section IS
-        // the devices list too — click navigates to the mount, hover
-        // reveals eject — so there's no separate "Devices" section. In
-        // flow after Places on purpose: the sidebar's bottom edge belongs
-        // to TransferStatus's copy indicator.
         Column {
-            visible: root.volumes.length > 0
+            visible: volumesModel.count > 0
             width: parent.width
             spacing: 8
 
             Repeater {
-                model: root.volumes
+                model: volumesModel
 
                 delegate: Rectangle {
                     id: volCard
-                    required property var modelData
-                    readonly property real usedBytes: modelData.total - modelData.avail
-                    readonly property real usedFrac: modelData.total > 0
-                        ? usedBytes / modelData.total : 0
-                    readonly property bool isActive: modelData.mount === root.currentPath
+                    required property string label
+                    required property string mount
+                    required property real total
+                    required property real avail
+                    required property string device
+                    required property string kind
+                    required property bool mounted
+                    readonly property bool isPhone: kind === "phone"
+                    readonly property real usedBytes: total - avail
+                    readonly property real usedFrac: total > 0 ? usedBytes / total : 0
+                    readonly property bool isActive: mount === root.currentPath
 
                     width: parent.width
                     height: 88
                     radius: Shape.large
                     color: Elevation.surfaceAt(2)
-                    // Active mount reads as a border, not a primary fill —
-                    // a fill would fight the gauge's own colors.
                     border.width: volCard.isActive ? 2 : 0
                     border.color: Color.scheme.primary
 
@@ -271,37 +290,41 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 12
 
-                        GaugeProgress {
+                        Item {
                             width: 64
                             height: 64
                             anchors.verticalCenter: parent.verticalCenter
-                            // Starts at 0 and binds the real value only on
-                            // completion: a property-initializer value would
-                            // be set directly (no animation), but a post-
-                            // completion assignment runs the Behavior — the
-                            // arc sweeps in when the card appears.
-                            progress: 0
-                            Component.onCompleted: progress = Qt.binding(function() {
-                                return volCard.usedFrac
-                            })
-                            // A nearly-full disk announces itself.
-                            progressColor: volCard.usedFrac >= 0.9
-                                ? Color.scheme.error : Color.scheme.primary
-                            icon: volCard.modelData.mount === "/" ? "hard_drive" : "usb"
-                            iconSize: 12
+
+                            GaugeProgress {
+                                anchors.fill: parent
+                                visible: !volCard.isPhone
+                                progress: 0
+                                Component.onCompleted: progress = Qt.binding(function() {
+                                    return volCard.usedFrac
+                                })
+                                progressColor: volCard.usedFrac >= 0.9
+                                    ? Color.scheme.error : Color.scheme.primary
+                                icon: volCard.mount === "/" ? "hard_drive" : "usb"
+                                iconSize: 12
+                            }
+
+                            Icon {
+                                anchors.centerIn: parent
+                                visible: volCard.isPhone
+                                content: "smartphone"
+                                iconSize: 30
+                                color: Color.scheme.primary
+                            }
                         }
 
                         Column {
-                            // Fixed width (the eject button floats over the
-                            // card's corner instead of sitting in this Row)
-                            // so the caption doesn't reflow on hover.
                             width: parent.width - 64 - 12
                             spacing: 3
                             anchors.verticalCenter: parent.verticalCenter
 
                             Text {
                                 width: parent.width
-                                text: volCard.modelData.label
+                                text: volCard.label
                                 elide: Text.ElideRight
                                 color: Color.scheme.surfaceText
                                 font.family: Type.bodyLarge.family
@@ -311,7 +334,9 @@ Rectangle {
 
                             Text {
                                 width: parent.width
-                                text: Format.formatBytesPair(volCard.usedBytes, volCard.modelData.total)
+                                text: volCard.isPhone
+                                    ? (volCard.mounted ? "Connected" : "Click to open")
+                                    : Format.formatBytesPair(volCard.usedBytes, volCard.total)
                                 elide: Text.ElideRight
                                 color: Color.scheme.surfaceVariantText
                                 font.family: Type.labelMedium.family
@@ -324,7 +349,7 @@ Rectangle {
                         id: ejectButton
                         width: 24
                         height: 24
-                        visible: volCard.modelData.mount !== "/" && _volArea.containsMouse
+                        visible: volCard.mount !== "/" && (!volCard.isPhone || volCard.mounted) && _volArea.containsMouse
                         anchors.top: parent.top
                         anchors.right: parent.right
                         anchors.margins: 6
@@ -349,7 +374,7 @@ Rectangle {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.fileModel.ejectVolume(volCard.modelData.device)
+                            onClicked: root.fileModel.ejectVolume(volCard.device)
                         }
 
                         Tooltip {
@@ -364,7 +389,16 @@ Rectangle {
                         z: -1
                         anchors.fill: parent
                         radius: parent.radius
-                        onClicked: if (root.fileModel) root.fileModel.navigate(volCard.modelData.mount)
+                        onClicked: {
+                            if (!root.fileModel) {
+                                return
+                            }
+                            if (volCard.isPhone && !volCard.mounted) {
+                                root.fileModel.mountVolume(volCard.device, volCard.mount)
+                            } else {
+                                root.fileModel.navigate(volCard.mount)
+                            }
+                        }
                     }
                 }
             }
