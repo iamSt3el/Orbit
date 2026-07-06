@@ -267,6 +267,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "ejectVolume"]
         fn eject_volume(self: Pin<&mut FileListModel>, device: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "mountVolume"]
+        fn mount_volume(self: Pin<&mut FileListModel>, uri: &QString, mount_path: &QString);
     }
 
     unsafe extern "RustQt" {
@@ -666,6 +670,8 @@ pub struct FileListModelRust {
     /// cancel MID-WALK to stop burning I/O, not merely have its result
     /// dropped on arrival.
     folder_scan_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    volumes_watch_started: bool,
+    gvfs_watcher: Option<fm_core::watcher::DirWatcher>,
 }
 
 /// The arguments transfer_batch was called with, parked while the
@@ -763,6 +769,8 @@ impl Default for FileListModelRust {
             folder_scan_items: 0,
             folder_scan_running: false,
             folder_scan_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            volumes_watch_started: false,
+            gvfs_watcher: None,
         }
     }
 }
@@ -1186,23 +1194,101 @@ impl qobject::FileListModel {
     }
 
     fn refresh_volumes(mut self: core::pin::Pin<&mut Self>) {
-        let lines: Vec<String> = fm_core::volumes::list_volumes()
-            .into_iter()
-            .map(|v| {
-                format!(
-                    "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
-                    v.label,
-                    v.mount_point.display(),
-                    v.total_bytes,
-                    v.avail_bytes,
-                    v.device
-                )
-            })
-            .collect();
-        let joined = QString::from(&lines.join("\n"));
-        if self.volumes_text != joined {
-            self.as_mut().set_volumes_text(joined);
+        if !self.volumes_watch_started {
+            self.as_mut().rust_mut().volumes_watch_started = true;
+            self.as_mut().start_volume_watches();
         }
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let mut volumes = tokio::task::spawn_blocking(fm_core::volumes::list_volumes)
+                .await
+                .unwrap_or_default();
+            volumes.extend(fm_core::volumes::list_phone_volumes().await);
+            let lines: Vec<String> = volumes
+                .into_iter()
+                .map(|v| {
+                    format!(
+                        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+                        v.label,
+                        v.mount_point.display(),
+                        v.total_bytes,
+                        v.avail_bytes,
+                        v.device,
+                        match v.kind {
+                            fm_core::volumes::VolumeKind::Disk => "disk",
+                            fm_core::volumes::VolumeKind::Phone => "phone",
+                        },
+                        if v.mounted { "1" } else { "0" }
+                    )
+                })
+                .collect();
+            let joined = lines.join("\n");
+            let _ = qt_thread.queue(move |mut model| {
+                let joined = QString::from(&joined);
+                if model.volumes_text != joined {
+                    model.as_mut().set_volumes_text(joined);
+                }
+            });
+        });
+    }
+
+    fn start_volume_watches(mut self: core::pin::Pin<&mut Self>) {
+        let qt_thread = self.qt_thread();
+        if let Err(e) = fm_core::volumes::spawn_mounts_watcher(move || {
+            let _ = qt_thread.queue(|mut model| model.as_mut().refresh_volumes());
+        }) {
+            eprintln!("mounts watcher failed: {e}");
+        }
+
+        let gvfs = fm_core::volumes::current_gvfs_dir();
+        if !gvfs.is_dir() {
+            return;
+        }
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        match fm_core::watcher::DirWatcher::new(&gvfs, tx) {
+            Ok(w) => {
+                self.as_mut().rust_mut().gvfs_watcher = Some(w);
+                let qt_thread = self.qt_thread();
+                runtime().spawn(async move {
+                    while rx.recv().await.is_some() {
+                        while rx.try_recv().is_ok() {}
+                        let _ = qt_thread.queue(|mut model| model.as_mut().refresh_volumes());
+                    }
+                });
+            }
+            Err(e) => eprintln!("gvfs watcher failed: {e}"),
+        }
+    }
+
+    fn mount_volume(self: core::pin::Pin<&mut Self>, uri: &QString, mount_path: &QString) {
+        let uri = uri.to_string();
+        let path = PathBuf::from(mount_path.to_string());
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            match fm_core::volumes::mount_uri(&uri).await {
+                Ok(()) => {
+                    for _ in 0..30 {
+                        if path.is_dir() {
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                    let _ = qt_thread.queue(move |mut model| {
+                        model.as_mut().refresh_volumes();
+                        model
+                            .as_mut()
+                            .navigate(&QString::from(&path.display().to_string()));
+                    });
+                }
+                Err(e) => {
+                    let _ = qt_thread.queue(move |mut model| {
+                        model
+                            .as_mut()
+                            .error_occurred(QString::from(&format!("Couldn't open device: {e}")));
+                    });
+                }
+            }
+        });
     }
 
     fn eject_volume(mut self: core::pin::Pin<&mut Self>, device: &QString) {
