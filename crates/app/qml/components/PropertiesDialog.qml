@@ -39,11 +39,20 @@ Item {
         root.entryModified = modified
         root.entryMimeType = mimeType
         root.entryPermissions = permissions
+        // Folder sizes are computed by a background walk (Nautilus-style)
+        // so the dialog opens instantly — the Size fact live-ticks from
+        // the folderScan* properties until the walk lands.
+        if (isDir && root.fileModel) {
+            root.fileModel.startFolderSizeScan(name)
+        }
         visible = true
         root.forceActiveFocus()
     }
 
     function close() {
+        if (root.entryIsDir && root.fileModel) {
+            root.fileModel.cancelFolderSizeScan()
+        }
         visible = false
         root.closed()
     }
@@ -63,7 +72,10 @@ Item {
             label: "Size",
             value: root.entryIsDir
                 ? (root.fileModel
-                    ? Format.formatBytes(root.fileModel.folderSize(root.entryName)) + " (" + Format.formatItemCount(root.fileModel.folderItemCount(root.entryName)) + ")"
+                    ? (root.fileModel.folderScanRunning && root.fileModel.folderScanBytes === 0
+                        ? "Calculating…"
+                        : Format.formatBytes(root.fileModel.folderScanBytes)
+                            + " (" + Format.formatItemCount(root.fileModel.folderScanItems) + ")")
                     : "—")
                 : Format.formatBytes(root.entrySize)
         },
