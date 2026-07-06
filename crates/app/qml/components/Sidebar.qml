@@ -1,5 +1,6 @@
 import QtQuick
 import com.filemanager.app 1.0
+import "../util/format.js" as Format
 
 // Sizing/coloring/animation deliberately mirrors the nav rows in the
 // user's quickshell "Nebula" settings app (SettingsContent.qml): 38px row
@@ -222,6 +223,70 @@ Rectangle {
 
         Text {
             visible: root.volumes.length > 0
+            text: "Storage"
+            leftPadding: 10
+            topPadding: 14
+            bottomPadding: 10
+            color: Color.scheme.surfaceVariantText
+            font.family: Type.labelMedium.family
+            font.weight: Type.labelMedium.weight
+            font.pixelSize: Type.labelMedium.size
+        }
+
+        // One gauge card per mounted volume, 2-up like the Nebula
+        // dashboard cards these are modeled on; wraps when a third
+        // volume mounts. In flow after Places on purpose — the sidebar's
+        // bottom edge belongs to TransferStatus's copy indicator.
+        Grid {
+            visible: root.volumes.length > 0
+            width: parent.width
+            columns: 2
+            columnSpacing: 8
+            rowSpacing: 8
+
+            Repeater {
+                model: root.volumes
+
+                delegate: Rectangle {
+                    id: gaugeCard
+                    required property var modelData
+                    readonly property real usedBytes: modelData.total - modelData.avail
+
+                    width: (parent.width - 8) / 2
+                    height: gaugeCardContent.implicitHeight + 20
+                    radius: Shape.large
+                    color: Elevation.surfaceAt(2)
+
+                    Column {
+                        id: gaugeCardContent
+                        anchors.centerIn: parent
+                        width: parent.width - 16
+                        spacing: 6
+
+                        GaugeProgress {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 62
+                            height: 62
+                            progress: gaugeCard.modelData.total > 0
+                                ? gaugeCard.usedBytes / gaugeCard.modelData.total : 0
+                            icon: gaugeCard.modelData.mount === "/" ? "hard_drive" : "usb"
+                            iconSize: 14
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: Format.formatBytesPair(gaugeCard.usedBytes, gaugeCard.modelData.total)
+                            color: Color.scheme.surfaceVariantText
+                            font.family: Type.labelMedium.family
+                            font.pixelSize: Type.labelMedium.size
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            visible: root.volumes.length > 0
             text: "Devices"
             leftPadding: 10
             topPadding: 14
@@ -240,8 +305,6 @@ Rectangle {
                 required property var modelData
 
                 readonly property bool isActive: modelData.mount === root.currentPath
-                readonly property real usedFrac: modelData.total > 0
-                    ? (modelData.total - modelData.avail) / modelData.total : 0
 
                 width: parent.width
                 implicitHeight: 46
@@ -280,23 +343,6 @@ Rectangle {
                                 font.family: Type.bodyLarge.family
                                 font.weight: Font.Medium
                                 font.pixelSize: Type.bodyLarge.size
-                            }
-
-                            // Capacity bar: filled fraction = used space.
-                            Rectangle {
-                                width: parent.width
-                                height: 3
-                                radius: Shape.full
-                                color: volItem.isActive
-                                    ? Qt.alpha(Color.scheme.primaryText, 0.3)
-                                    : Elevation.surfaceAt(4)
-
-                                Rectangle {
-                                    width: parent.width * volItem.usedFrac
-                                    height: parent.height
-                                    radius: parent.radius
-                                    color: volItem.isActive ? Color.scheme.primaryText : Color.scheme.primary
-                                }
                             }
                         }
 

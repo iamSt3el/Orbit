@@ -18,6 +18,22 @@ function formatItemCount(count) {
     return count + (count === 1 ? " item" : " items")
 }
 
+// "3.5 / 9.6 GB" — used and total share the total's unit so the pair
+// reads as one fraction (the storage gauge cards' caption).
+function formatBytesPair(used, total) {
+    if (total < 1024) {
+        return used + " / " + total + " B"
+    }
+    var units = ["KB", "MB", "GB", "TB", "PB"]
+    var div = 1024
+    var unitIndex = 0
+    while (total / div >= 1024 && unitIndex < units.length - 1) {
+        div *= 1024
+        unitIndex++
+    }
+    return (used / div).toFixed(1) + " / " + (total / div).toFixed(1) + " " + units[unitIndex]
+}
+
 // Maps FileListModel's `iconKey` role (a coarse mime-type category —
 // see fm_core::mime::icon_key_for) to a Material Symbols glyph name.
 function iconForKey(iconKey, isDir) {
