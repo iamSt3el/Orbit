@@ -31,7 +31,11 @@ function formatBytesPair(used, total) {
         div *= 1024
         unitIndex++
     }
-    return (used / div).toFixed(1) + " / " + (total / div).toFixed(1) + " " + units[unitIndex]
+    var u = used / div
+    var t = total / div
+    // Same rounding rule as formatBytes: one decimal only below 10, so
+    // "260.6 / 293.0 GB" tightens to "261 / 293 GB" and fits the card.
+    return u.toFixed(u < 10 ? 1 : 0) + " / " + t.toFixed(t < 10 ? 1 : 0) + " " + units[unitIndex]
 }
 
 // Maps FileListModel's `iconKey` role (a coarse mime-type category —

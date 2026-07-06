@@ -233,153 +233,116 @@ Rectangle {
             font.pixelSize: Type.labelMedium.size
         }
 
-        // One gauge card per mounted volume, 2-up like the Nebula
-        // dashboard cards these are modeled on; wraps when a third
-        // volume mounts. In flow after Places on purpose — the sidebar's
-        // bottom edge belongs to TransferStatus's copy indicator.
-        Grid {
+        // One full-width gauge card per mounted volume. This section IS
+        // the devices list too — click navigates to the mount, hover
+        // reveals eject — so there's no separate "Devices" section. In
+        // flow after Places on purpose: the sidebar's bottom edge belongs
+        // to TransferStatus's copy indicator.
+        Column {
             visible: root.volumes.length > 0
             width: parent.width
-            columns: 2
-            columnSpacing: 8
-            rowSpacing: 8
+            spacing: 8
 
             Repeater {
                 model: root.volumes
 
                 delegate: Rectangle {
-                    id: gaugeCard
+                    id: volCard
                     required property var modelData
                     readonly property real usedBytes: modelData.total - modelData.avail
+                    readonly property bool isActive: modelData.mount === root.currentPath
 
-                    width: (parent.width - 8) / 2
-                    height: gaugeCardContent.implicitHeight + 20
+                    width: parent.width
+                    height: 88
                     radius: Shape.large
                     color: Elevation.surfaceAt(2)
-
-                    Column {
-                        id: gaugeCardContent
-                        anchors.centerIn: parent
-                        width: parent.width - 16
-                        spacing: 6
-
-                        GaugeProgress {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 62
-                            height: 62
-                            progress: gaugeCard.modelData.total > 0
-                                ? gaugeCard.usedBytes / gaugeCard.modelData.total : 0
-                            icon: gaugeCard.modelData.mount === "/" ? "hard_drive" : "usb"
-                            iconSize: 14
-                        }
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: Format.formatBytesPair(gaugeCard.usedBytes, gaugeCard.modelData.total)
-                            color: Color.scheme.surfaceVariantText
-                            font.family: Type.labelMedium.family
-                            font.pixelSize: Type.labelMedium.size
-                        }
-                    }
-                }
-            }
-        }
-
-        Text {
-            visible: root.volumes.length > 0
-            text: "Devices"
-            leftPadding: 10
-            topPadding: 14
-            bottomPadding: 10
-            color: Color.scheme.surfaceVariantText
-            font.family: Type.labelMedium.family
-            font.weight: Type.labelMedium.weight
-            font.pixelSize: Type.labelMedium.size
-        }
-
-        Repeater {
-            model: root.volumes
-
-            delegate: Item {
-                id: volItem
-                required property var modelData
-
-                readonly property bool isActive: modelData.mount === root.currentPath
-
-                width: parent.width
-                implicitHeight: 46
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Shape.medium
-                    color: volItem.isActive ? Color.scheme.primary : "transparent"
-                    Behavior on color { ColorAnimation { duration: 150 } }
+                    // Active mount reads as a border, not a primary fill —
+                    // a fill would fight the gauge's own colors.
+                    border.width: volCard.isActive ? 2 : 0
+                    border.color: Color.scheme.primary
 
                     Row {
                         anchors.left: parent.left
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: 12
                         anchors.right: parent.right
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 8
+                        spacing: 12
 
-                        Icon {
-                            content: volItem.modelData.mount === "/" ? "hard_drive" : "usb"
-                            iconSize: 18
-                            color: volItem.isActive ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
+                        GaugeProgress {
+                            width: 64
+                            height: 64
                             anchors.verticalCenter: parent.verticalCenter
+                            progress: volCard.modelData.total > 0
+                                ? volCard.usedBytes / volCard.modelData.total : 0
+                            icon: volCard.modelData.mount === "/" ? "hard_drive" : "usb"
+                            iconSize: 12
                         }
 
                         Column {
-                            width: parent.width - 26 - (ejectButton.visible ? 28 : 0)
-                            spacing: 4
+                            // Fixed width (the eject button floats over the
+                            // card's corner instead of sitting in this Row)
+                            // so the caption doesn't reflow on hover.
+                            width: parent.width - 64 - 12
+                            spacing: 3
                             anchors.verticalCenter: parent.verticalCenter
 
                             Text {
                                 width: parent.width
-                                text: volItem.modelData.label
+                                text: volCard.modelData.label
                                 elide: Text.ElideRight
-                                color: volItem.isActive ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
+                                color: Color.scheme.surfaceText
                                 font.family: Type.bodyLarge.family
                                 font.weight: Font.Medium
                                 font.pixelSize: Type.bodyLarge.size
                             }
+
+                            Text {
+                                width: parent.width
+                                text: Format.formatBytesPair(volCard.usedBytes, volCard.modelData.total)
+                                elide: Text.ElideRight
+                                color: Color.scheme.surfaceVariantText
+                                font.family: Type.labelMedium.family
+                                font.pixelSize: Type.labelMedium.size
+                            }
+                        }
+                    }
+
+                    Item {
+                        id: ejectButton
+                        width: 24
+                        height: 24
+                        visible: volCard.modelData.mount !== "/" && _volArea.containsMouse
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.margins: 6
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Shape.full
+                            color: Elevation.surfaceAt(3)
+                            opacity: _ejectArea.containsMouse ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                         }
 
-                        Item {
-                            id: ejectButton
-                            width: 24
-                            height: 24
-                            visible: volItem.modelData.mount !== "/" && _volArea.containsMouse
-                            anchors.verticalCenter: parent.verticalCenter
+                        Icon {
+                            anchors.centerIn: parent
+                            content: "eject"
+                            iconSize: 14
+                            color: Color.scheme.surfaceVariantText
+                        }
 
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: Shape.full
-                                color: Elevation.surfaceAt(3)
-                                opacity: _ejectArea.containsMouse ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-                            }
+                        MouseArea {
+                            id: _ejectArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.fileModel.ejectVolume(volCard.modelData.device)
+                        }
 
-                            Icon {
-                                anchors.centerIn: parent
-                                content: "eject"
-                                iconSize: 14
-                                color: volItem.isActive ? Color.scheme.primaryText : Color.scheme.surfaceVariantText
-                            }
-
-                            MouseArea {
-                                id: _ejectArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.fileModel.ejectVolume(volItem.modelData.device)
-                            }
-
-                            Tooltip {
-                                text: "Eject"
-                                hovered: _ejectArea.containsMouse
-                            }
+                        Tooltip {
+                            text: "Eject"
+                            hovered: _ejectArea.containsMouse
                         }
                     }
 
@@ -390,7 +353,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: if (root.fileModel) root.fileModel.navigate(volItem.modelData.mount)
+                        onClicked: if (root.fileModel) root.fileModel.navigate(volCard.modelData.mount)
                     }
                 }
             }

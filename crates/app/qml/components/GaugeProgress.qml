@@ -86,21 +86,23 @@ Item {
             color: root.progressColor
         }
 
+        // titleSmall/labelSmall, not the Medium sizes — the whole stack
+        // has to fit inside a ~64px circle without poking past the arc.
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Math.round(root.progress * 100) + "%"
             color: Color.scheme.primary
-            font.family: Type.titleMedium.family
-            font.weight: Type.titleMedium.weight
-            font.pixelSize: Type.titleMedium.size
+            font.family: Type.titleSmall.family
+            font.weight: Type.titleSmall.weight
+            font.pixelSize: Type.titleSmall.size
         }
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Used"
             color: Color.scheme.surfaceVariantText
-            font.family: Type.labelMedium.family
-            font.pixelSize: Type.labelMedium.size
+            font.family: Type.labelSmall.family
+            font.pixelSize: Type.labelSmall.size
         }
     }
 }
