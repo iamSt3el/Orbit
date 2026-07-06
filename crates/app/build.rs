@@ -33,6 +33,7 @@ fn main() {
                 "qml/components/M3Slider.qml",
                 "qml/components/Snackbar.qml",
                 "qml/components/WavyProgressBar.qml",
+                "qml/components/GaugeProgress.qml",
                 "qml/components/FileListItem.qml",
                 "qml/components/FileGridItem.qml",
                 "qml/components/TopAppBar.qml",
