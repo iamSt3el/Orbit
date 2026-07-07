@@ -319,6 +319,7 @@ Window {
             // startThemeColorsWatch()), not QML XHR, now that the model
             // is ready.
             initialTabModel.startThemeColorsWatch()
+            initialTabModel.startRulesEngine()
             var savedW = initialTabModel.savedWindowWidth()
             var savedH = initialTabModel.savedWindowHeight()
             if (savedW >= 400 && savedH >= 300) {

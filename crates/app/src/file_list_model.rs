@@ -79,6 +79,7 @@ pub mod qobject {
         #[qproperty(bool, usage_scan_running, cxx_name = "usageScanRunning")]
         #[qproperty(QString, duplicates_text, cxx_name = "duplicatesText")]
         #[qproperty(bool, duplicate_scan_running, cxx_name = "duplicateScanRunning")]
+        #[qproperty(QString, rules_joined, cxx_name = "rulesJoined")]
         // Keyboard cursor (roadmap item 7): index into the DISPLAYED rows
         // (the same space the views render), -1 = no cursor. Delegates
         // draw the focus ring off `cursorRow === index`; moveCursor/
@@ -603,6 +604,18 @@ pub mod qobject {
         fn trash_entries(self: Pin<&mut FileListModel>, names_joined: &QString);
 
         #[qinvokable]
+        #[cxx_name = "startRulesEngine"]
+        fn start_rules_engine(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "addRule"]
+        fn add_rule(self: Pin<&mut FileListModel>, dir: &QString, pattern: &QString, dest: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "removeRule"]
+        fn remove_rule(self: Pin<&mut FileListModel>, index: i32);
+
+        #[qinvokable]
         #[cxx_name = "collapseTree"]
         fn collapse_all_tree(self: Pin<&mut FileListModel>);
 
@@ -738,6 +751,8 @@ pub struct FileListModelRust {
     duplicates_text: QString,
     duplicate_scan_running: bool,
     duplicate_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    rules_joined: QString,
+    rules_watchers: Vec<fm_core::watcher::DirWatcher>,
     /// Backing for the pinnedFoldersJoined qproperty.
     pinned_folders_joined: QString,
     /// Backing for the cursorRow qproperty (-1 = no cursor).
@@ -876,6 +891,8 @@ impl Default for FileListModelRust {
             duplicates_text: QString::from(""),
             duplicate_scan_running: false,
             duplicate_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            rules_joined: QString::from(""),
+            rules_watchers: Vec::new(),
             cursor_row: -1,
             cursor_anchor_row: -1,
             history_back: Vec::new(),
@@ -933,6 +950,40 @@ fn format_modified(modified: std::time::SystemTime) -> String {
     OffsetDateTime::from(modified)
         .format(&Iso8601::DEFAULT)
         .unwrap_or_default()
+}
+
+async fn apply_rule_and_notify(
+    rule: fm_core::settings::Rule,
+    qt_thread: cxx_qt::CxxQtThread<qobject::FileListModel>,
+) {
+    let moved = fm_core::rules::apply_rule(&rule).await;
+    if moved.is_empty() {
+        return;
+    }
+    let count = moved.len();
+    let dest_leaf = rule
+        .dest
+        .rsplit('/')
+        .next()
+        .unwrap_or(&rule.dest)
+        .to_string();
+    let rule_dir = rule.dir.clone();
+    let rule_dest = rule.dest.clone();
+    let _ = qt_thread.queue(move |mut model| {
+        let op = UndoOp::Move { pairs: moved };
+        model.as_mut().rust_mut().journal.record(op);
+        model.as_mut().operation_completed(
+            QString::from(&format!(
+                "Rule: moved {} to \"{dest_leaf}\"",
+                pluralize_items(count)
+            )),
+            true,
+        );
+        let current = model.current_path.to_string();
+        if current == rule_dir || current == rule_dest {
+            model.as_mut().refresh_entries_diff();
+        }
+    });
 }
 
 async fn gather_entries(path: &std::path::Path) -> Vec<fm_core::FileEntry> {
@@ -1807,6 +1858,96 @@ impl qobject::FileListModel {
     fn cancel_duplicate_scan(&self) {
         self.duplicate_generation
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn start_rules_engine(mut self: core::pin::Pin<&mut Self>) {
+        self.as_mut().rust_mut().rules_watchers.clear();
+        let rules = fm_core::settings::Settings::load().rules;
+        let joined = rules
+            .iter()
+            .map(|r| format!("{}\u{1f}{}\u{1f}{}", r.dir, r.pattern, r.dest))
+            .collect::<Vec<_>>()
+            .join("\n");
+        self.as_mut().set_rules_joined(QString::from(&joined));
+        for rule in rules {
+            if rule.dir.is_empty() || rule.pattern.is_empty() || rule.dest.is_empty() {
+                continue;
+            }
+            let qt_thread = self.qt_thread();
+            let startup_rule = rule.clone();
+            runtime().spawn(async move {
+                apply_rule_and_notify(startup_rule, qt_thread).await;
+            });
+
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            let Ok(watcher) =
+                fm_core::watcher::DirWatcher::new(std::path::Path::new(&rule.dir), tx)
+            else {
+                continue;
+            };
+            self.as_mut().rust_mut().rules_watchers.push(watcher);
+            let qt_thread = self.qt_thread();
+            runtime().spawn(async move {
+                loop {
+                    if rx.recv().await.is_none() {
+                        return;
+                    }
+                    loop {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_millis(800),
+                            rx.recv(),
+                        )
+                        .await
+                        {
+                            Ok(Some(_)) => continue,
+                            Ok(None) => return,
+                            Err(_) => break,
+                        }
+                    }
+                    apply_rule_and_notify(rule.clone(), qt_thread.clone()).await;
+                }
+            });
+        }
+    }
+
+    fn add_rule(
+        mut self: core::pin::Pin<&mut Self>,
+        dir: &QString,
+        pattern: &QString,
+        dest: &QString,
+    ) {
+        let dir = fm_core::paths::expand_tilde(dir.to_string().trim());
+        let pattern = pattern.to_string().trim().to_string();
+        let dest = fm_core::paths::expand_tilde(dest.to_string().trim());
+        if dir.is_empty() || pattern.is_empty() || dest.is_empty() {
+            return;
+        }
+        if !std::path::Path::new(&dir).is_dir() {
+            self.as_mut()
+                .error_occurred(QString::from(&format!("Not a folder: {dir}")));
+            return;
+        }
+        let mut settings = fm_core::settings::Settings::load();
+        settings
+            .rules
+            .push(fm_core::settings::Rule { dir, pattern, dest });
+        if let Err(e) = settings.save() {
+            eprintln!("add_rule failed: {e}");
+        }
+        self.start_rules_engine();
+    }
+
+    fn remove_rule(mut self: core::pin::Pin<&mut Self>, index: i32) {
+        let mut settings = fm_core::settings::Settings::load();
+        let idx = index as usize;
+        if idx >= settings.rules.len() {
+            return;
+        }
+        settings.rules.remove(idx);
+        if let Err(e) = settings.save() {
+            eprintln!("remove_rule failed: {e}");
+        }
+        self.start_rules_engine();
     }
 
     fn trash_entries(mut self: core::pin::Pin<&mut Self>, names_joined: &QString) {

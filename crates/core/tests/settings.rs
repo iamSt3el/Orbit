@@ -40,6 +40,11 @@ fn save_then_load_round_trips() {
         active_tab: 1,
         window_width: 1280,
         window_height: 800,
+        rules: vec![fm_core::settings::Rule {
+            dir: "/home/steel/Downloads".to_string(),
+            pattern: "*.pdf".to_string(),
+            dest: "/home/steel/Documents".to_string(),
+        }],
     };
     settings.save_to(&path).unwrap();
 

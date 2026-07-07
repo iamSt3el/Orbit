@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// One auto-organize rule: files landing in `dir` whose names match the
+/// glob `pattern` (`*`/`?`) are moved into `dest`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Rule {
+    pub dir: String,
+    pub pattern: String,
+    pub dest: String,
+}
+
 /// Persisted user preferences — view mode, sort order, icon size, etc.
 /// Stored as JSON at `~/.config/filemanager/settings.json`, alongside the
 /// optional external theme color file.
@@ -21,6 +30,7 @@ pub struct Settings {
     pub active_tab: u32,
     pub window_width: u32,
     pub window_height: u32,
+    pub rules: Vec<Rule>,
 }
 
 impl Default for Settings {
@@ -38,6 +48,7 @@ impl Default for Settings {
             active_tab: 0,
             window_width: 0,
             window_height: 0,
+            rules: Vec::new(),
         }
     }
 }

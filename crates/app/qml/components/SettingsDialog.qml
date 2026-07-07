@@ -251,6 +251,161 @@ Item {
                 }
             }
 
+            Text {
+                text: "Auto-organize rules"
+                color: Color.scheme.primary
+                font.family: Type.labelMedium.family
+                font.weight: Type.labelMedium.weight
+                font.pixelSize: Type.labelMedium.size
+            }
+
+            Column {
+                width: parent.width
+                spacing: 3
+
+                Repeater {
+                    model: (root.fileModel && root.fileModel.rulesJoined.length > 0)
+                        ? root.fileModel.rulesJoined.split("\n") : []
+
+                    delegate: GroupCard {
+                        id: ruleCard
+                        required property string modelData
+                        required property int index
+                        readonly property var parts: modelData.split("\u001f")
+                        isFirst: index === 0
+                        isLast: false
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Column {
+                                Layout.fillWidth: true
+                                spacing: 1
+
+                                Text {
+                                    width: parent.width
+                                    elide: Text.ElideMiddle
+                                    text: ruleCard.parts.length === 3
+                                        ? ruleCard.parts[1] + " in " + ruleCard.parts[0].substring(ruleCard.parts[0].lastIndexOf("/") + 1)
+                                        : ""
+                                    color: Color.scheme.surfaceText
+                                    font.family: Type.bodyMedium.family
+                                    font.pixelSize: Type.bodyMedium.size
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    elide: Text.ElideMiddle
+                                    text: ruleCard.parts.length === 3 ? "→ " + ruleCard.parts[2] : ""
+                                    color: Color.scheme.surfaceVariantText
+                                    font.family: Type.bodySmall.family
+                                    font.pixelSize: Type.bodySmall.size
+                                }
+                            }
+
+                            Item {
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: Shape.full
+                                    color: Elevation.surfaceAt(4)
+                                    opacity: _ruleDeleteArea.containsMouse ? 1 : 0
+                                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                                }
+
+                                Icon {
+                                    anchors.centerIn: parent
+                                    content: "delete"
+                                    iconSize: 16
+                                    color: Color.scheme.error
+                                }
+
+                                MouseArea {
+                                    id: _ruleDeleteArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.fileModel.removeRule(ruleCard.index)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                GroupCard {
+                    isFirst: !(root.fileModel && root.fileModel.rulesJoined.length > 0)
+                    isLast: true
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        component RuleField: Rectangle {
+                            property alias text: _fieldInput.text
+                            property string placeholder: ""
+                            Layout.fillWidth: true
+                            height: 34
+                            radius: Shape.small
+                            color: Color.scheme.surfaceContainerHighest
+                            border.width: _fieldInput.activeFocus ? 2 : 1
+                            border.color: _fieldInput.activeFocus ? Color.scheme.primary : Color.scheme.outline
+
+                            TextInput {
+                                id: _fieldInput
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                verticalAlignment: TextInput.AlignVCenter
+                                clip: true
+                                color: Color.scheme.surfaceText
+                                font.family: Type.bodyMedium.family
+                                font.pixelSize: Type.bodyMedium.size
+
+                                Text {
+                                    visible: _fieldInput.text.length === 0
+                                    text: parent.parent.placeholder
+                                    color: Color.scheme.surfaceVariantText
+                                    font: _fieldInput.font
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                        }
+
+                        RuleField {
+                            id: _ruleDir
+                            placeholder: "Watch folder (e.g. ~/Downloads)"
+                        }
+
+                        RuleField {
+                            id: _rulePattern
+                            placeholder: "Pattern (e.g. *.pdf)"
+                        }
+
+                        RuleField {
+                            id: _ruleDest
+                            placeholder: "Move to (e.g. ~/Documents/PDFs)"
+                        }
+
+                        Button {
+                            Layout.alignment: Qt.AlignRight
+                            variant: "tonal"
+                            text: "Add rule"
+                            onClicked: {
+                                if (_ruleDir.text.length > 0 && _rulePattern.text.length > 0 && _ruleDest.text.length > 0) {
+                                    root.fileModel.addRule(_ruleDir.text, _rulePattern.text, _ruleDest.text)
+                                    _ruleDir.text = ""
+                                    _rulePattern.text = ""
+                                    _ruleDest.text = ""
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Row {
                 anchors.right: parent.right
                 spacing: 8
