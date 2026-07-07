@@ -11,6 +11,7 @@ Item {
 
     property var fileModel
     property bool resumeLastPath: true
+    signal aboutRequested
     // See ContextMenu.qml — lets the Loader wrapping this component tear
     // the instance down once it hides.
     signal closed
@@ -416,6 +417,15 @@ Item {
             Row {
                 anchors.right: parent.right
                 spacing: 8
+
+                Button {
+                    variant: "text"
+                    text: "About"
+                    onClicked: {
+                        root.close()
+                        root.aboutRequested()
+                    }
+                }
 
                 Button {
                     variant: "text"

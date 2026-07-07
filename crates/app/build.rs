@@ -50,6 +50,7 @@ fn main() {
                 "qml/components/PropertiesDialog.qml",
                 "qml/components/ConfirmDialog.qml",
                 "qml/components/SettingsDialog.qml",
+                "qml/components/AboutDialog.qml",
                 "qml/components/LinearWavyProgressBar.qml",
                 "qml/components/TransferStatus.qml",
                 "qml/components/SelectionToolbar.qml",

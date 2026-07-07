@@ -270,6 +270,9 @@ pub mod qobject {
         #[cxx_name = "openWithApps"]
         fn open_with_apps(self: &FileListModel, name: &QString) -> QString;
 
+        #[cxx_name = "appVersion"]
+        fn app_version(self: &FileListModel) -> QString;
+
         /// Launches the given Exec line on the entry (fire-and-forget,
         /// like openEntry's xdg-open).
         #[qinvokable]
@@ -1382,6 +1385,10 @@ impl qobject::FileListModel {
             entry.icon_key.clone(),
         ];
         QString::from(&fields.join("\u{1f}"))
+    }
+
+    fn app_version(&self) -> QString {
+        QString::from(env!("CARGO_PKG_VERSION"))
     }
 
     fn open_with_apps(&self, name: &QString) -> QString {

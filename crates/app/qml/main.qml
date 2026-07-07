@@ -528,6 +528,11 @@ Window {
         settingsDialogLoader.item.open()
     }
 
+    function openAboutDialog() {
+        aboutDialogLoader.active = true
+        aboutDialogLoader.item.open()
+    }
+
     function openCommandPalette() {
         commandPaletteLoader.active = true
         commandPaletteLoader.item.open()
@@ -610,7 +615,8 @@ Window {
         conflictDialogLoader.active ||
         emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active ||
         deletePermanentlyConfirmDialogLoader.active || commandPaletteLoader.active ||
-        diskUsageDialogLoader.active || duplicatesDialogLoader.active
+        diskUsageDialogLoader.active || duplicatesDialogLoader.active ||
+        aboutDialogLoader.active
 
     Shortcut {
         sequences: [StandardKey.Delete]
@@ -2507,7 +2513,19 @@ Window {
         sourceComponent: SettingsDialog {
             centerOffsetX: window.dialogCenterOffsetX
             fileModel: window.fileListModel
+            onAboutRequested: window.openAboutDialog()
             onClosed: Qt.callLater(() => settingsDialogLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: aboutDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: AboutDialog {
+            centerOffsetX: window.dialogCenterOffsetX
+            fileModel: window.fileListModel
+            onClosed: Qt.callLater(() => aboutDialogLoader.active = false)
         }
     }
 
