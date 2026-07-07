@@ -97,7 +97,7 @@ Item {
             width: parent.width
             barWidth: parent.width
             barHeight: 4
-            progress: root.progress
+            progress: root.totalBytes > 0 ? root.progress : 1
             animateWave: root.active
             progressColor: Color.scheme.primary
             trackColor: Color.scheme.outlineVariant
@@ -106,6 +106,7 @@ Item {
         Item {
             width: parent.width
             height: 16
+            visible: root.totalBytes > 0
 
             Text {
                 anchors.left: parent.left

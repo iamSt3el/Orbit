@@ -2007,6 +2007,25 @@ impl qobject::FileListModel {
         });
     }
 
+    fn spawn_transfer_progress_pump(
+        &self,
+        mut progress_rx: tokio::sync::mpsc::UnboundedReceiver<u64>,
+    ) {
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let mut last_emit = std::time::Instant::now() - std::time::Duration::from_secs(1);
+            while let Some(done) = progress_rx.recv().await {
+                if last_emit.elapsed() < std::time::Duration::from_millis(120) {
+                    continue;
+                }
+                last_emit = std::time::Instant::now();
+                let _ = qt_thread.queue(move |mut model| {
+                    model.as_mut().set_transfer_done_bytes(done as i64);
+                });
+            }
+        });
+    }
+
     fn compress_entries(mut self: core::pin::Pin<&mut Self>, names_joined: &QString) {
         let current = PathBuf::from(self.current_path.to_string());
         let names: Vec<String> = names_joined
@@ -2028,12 +2047,32 @@ impl qobject::FileListModel {
 
         self.as_mut().set_is_busy(true);
         self.as_mut().set_busy_label(QString::from("Compressing…"));
+        self.as_mut().set_transfer_done_bytes(0);
+        self.as_mut().set_transfer_total_bytes(0);
+        self.as_mut().set_transfer_speed_label(QString::from(""));
 
+        let (progress_tx, progress_rx) = tokio::sync::mpsc::unbounded_channel::<u64>();
         let qt_thread = self.qt_thread();
+        self.spawn_transfer_progress_pump(progress_rx);
         runtime().spawn(async move {
             let count = names.len();
-            let result = fm_core::archive::compress(&current, &names, &dest).await;
+            let walk_parent = current.clone();
+            let walk_names = names.clone();
+            let (sizes, total) = tokio::task::spawn_blocking(move || {
+                fm_core::archive::source_sizes(&walk_parent, &walk_names)
+            })
+            .await
+            .unwrap_or_default();
+            let total_qt_thread = qt_thread.clone();
+            let _ = total_qt_thread.queue(move |mut model| {
+                model.as_mut().set_transfer_total_bytes(total as i64);
+            });
+            let result =
+                fm_core::archive::compress_with_progress(&current, &names, &dest, &sizes, progress_tx)
+                    .await;
             let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_transfer_done_bytes(0);
+                model.as_mut().set_transfer_total_bytes(0);
                 model.as_mut().set_is_busy(false);
                 model.as_mut().refresh_entries_diff();
                 match result {
@@ -2078,11 +2117,27 @@ impl qobject::FileListModel {
 
         self.as_mut().set_is_busy(true);
         self.as_mut().set_busy_label(QString::from("Extracting…"));
+        self.as_mut().set_transfer_done_bytes(0);
+        self.as_mut().set_transfer_total_bytes(0);
+        self.as_mut().set_transfer_speed_label(QString::from(""));
 
+        let (progress_tx, progress_rx) = tokio::sync::mpsc::unbounded_channel::<u64>();
         let qt_thread = self.qt_thread();
+        self.spawn_transfer_progress_pump(progress_rx);
         runtime().spawn(async move {
-            let result = fm_core::archive::extract(&archive_path, &dest).await;
+            let (sizes, total) = fm_core::archive::archive_entry_sizes(&archive_path)
+                .await
+                .unwrap_or_default();
+            let total_qt_thread = qt_thread.clone();
+            let _ = total_qt_thread.queue(move |mut model| {
+                model.as_mut().set_transfer_total_bytes(total as i64);
+            });
+            let result =
+                fm_core::archive::extract_with_progress(&archive_path, &dest, &sizes, progress_tx)
+                    .await;
             let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_transfer_done_bytes(0);
+                model.as_mut().set_transfer_total_bytes(0);
                 model.as_mut().set_is_busy(false);
                 model.as_mut().refresh_entries_diff();
                 match result {

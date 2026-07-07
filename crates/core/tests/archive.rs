@@ -64,3 +64,84 @@ async fn extract_reports_bsdtar_errors() {
 
     assert!(result.is_err());
 }
+
+#[test]
+fn source_sizes_walks_nested_inputs() {
+    let dir = tempdir().unwrap();
+    fs::create_dir(dir.path().join("sub")).unwrap();
+    fs::write(dir.path().join("sub").join("a.txt"), b"alpha").unwrap();
+    fs::write(dir.path().join("b.txt"), b"beta").unwrap();
+
+    let (map, total) =
+        archive::source_sizes(dir.path(), &["sub".to_string(), "b.txt".to_string()]);
+
+    assert_eq!(map["sub/a.txt"], 5);
+    assert_eq!(map["b.txt"], 4);
+    assert_eq!(total, 9);
+}
+
+#[tokio::test]
+async fn compress_reports_cumulative_byte_progress() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("a.txt"), vec![0u8; 100]).unwrap();
+    fs::write(dir.path().join("b.txt"), vec![0u8; 50]).unwrap();
+
+    let names = vec!["a.txt".to_string(), "b.txt".to_string()];
+    let (sizes, total) = archive::source_sizes(dir.path(), &names);
+    let dest = dir.path().join("out.zip");
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+    archive::compress_with_progress(dir.path(), &names, &dest, &sizes, tx)
+        .await
+        .unwrap();
+
+    let mut last = 0;
+    while let Ok(done) = rx.try_recv() {
+        assert!(done >= last);
+        last = done;
+    }
+    assert_eq!(last, total);
+}
+
+#[tokio::test]
+async fn archive_entry_sizes_reads_the_listing() {
+    let dir = tempdir().unwrap();
+    fs::create_dir(dir.path().join("sub")).unwrap();
+    fs::write(dir.path().join("sub").join("a.txt"), vec![0u8; 100]).unwrap();
+    let dest = dir.path().join("out.zip");
+    archive::compress(dir.path(), &["sub".to_string()], &dest)
+        .await
+        .unwrap();
+
+    let (map, total) = archive::archive_entry_sizes(&dest).await.unwrap();
+
+    assert_eq!(map.get("sub/a.txt"), Some(&100));
+    assert_eq!(total, 100);
+}
+
+#[tokio::test]
+async fn extract_reports_cumulative_byte_progress() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("a.txt"), vec![0u8; 100]).unwrap();
+    let dest = dir.path().join("out.zip");
+    archive::compress(dir.path(), &["a.txt".to_string()], &dest)
+        .await
+        .unwrap();
+
+    let (sizes, total) = archive::archive_entry_sizes(&dest).await.unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    archive::extract_with_progress(&dest, &dir.path().join("out"), &sizes, tx)
+        .await
+        .unwrap();
+
+    let mut last = 0;
+    while let Ok(done) = rx.try_recv() {
+        assert!(done >= last);
+        last = done;
+    }
+    assert_eq!(last, total);
+    assert_eq!(
+        fs::metadata(dir.path().join("out").join("a.txt")).unwrap().len(),
+        100
+    );
+}
