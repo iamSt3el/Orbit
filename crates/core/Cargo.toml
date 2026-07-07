@@ -18,6 +18,7 @@ resvg = "0.44"
 png = "0.17"
 md5 = { package = "md-5", version = "0.10" }
 percent-encoding = "2"
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

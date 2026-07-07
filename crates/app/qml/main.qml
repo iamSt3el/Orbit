@@ -533,6 +533,11 @@ Window {
         diskUsageDialogLoader.item.open(fileModel.currentPath)
     }
 
+    function openDuplicatesDialog() {
+        duplicatesDialogLoader.active = true
+        duplicatesDialogLoader.item.open()
+    }
+
     function runPaletteAction(actionId) {
         switch (actionId) {
         case "newFolder": window.openNewFolderDialog(); break
@@ -557,6 +562,7 @@ Window {
         case "undo": fileModel.undo(); break
         case "redo": fileModel.redo(); break
         case "diskUsage": window.openDiskUsageDialog(); break
+        case "findDuplicates": window.openDuplicatesDialog(); break
         }
     }
 
@@ -599,7 +605,7 @@ Window {
         conflictDialogLoader.active ||
         emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active ||
         deletePermanentlyConfirmDialogLoader.active || commandPaletteLoader.active ||
-        diskUsageDialogLoader.active
+        diskUsageDialogLoader.active || duplicatesDialogLoader.active
 
     Shortcut {
         sequences: [StandardKey.Delete]
@@ -2321,6 +2327,17 @@ Window {
             confirmLabel: "Empty Trash"
             onConfirmed: fileModel.emptyTrash()
             onClosed: Qt.callLater(() => emptyTrashConfirmDialogLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: duplicatesDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: DuplicatesDialog {
+            fileModel: window.fileListModel
+            centerOffsetX: window.dialogCenterOffsetX
+            onClosed: Qt.callLater(() => duplicatesDialogLoader.active = false)
         }
     }
 

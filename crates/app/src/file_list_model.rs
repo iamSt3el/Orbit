@@ -77,6 +77,8 @@ pub mod qobject {
         #[qproperty(bool, content_search, cxx_name = "contentSearch")]
         #[qproperty(QString, usage_text, cxx_name = "usageText")]
         #[qproperty(bool, usage_scan_running, cxx_name = "usageScanRunning")]
+        #[qproperty(QString, duplicates_text, cxx_name = "duplicatesText")]
+        #[qproperty(bool, duplicate_scan_running, cxx_name = "duplicateScanRunning")]
         // Keyboard cursor (roadmap item 7): index into the DISPLAYED rows
         // (the same space the views render), -1 = no cursor. Delegates
         // draw the focus ring off `cursorRow === index`; moveCursor/
@@ -589,6 +591,18 @@ pub mod qobject {
         fn cancel_usage_scan(self: &FileListModel);
 
         #[qinvokable]
+        #[cxx_name = "startDuplicateScan"]
+        fn start_duplicate_scan(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "cancelDuplicateScan"]
+        fn cancel_duplicate_scan(self: &FileListModel);
+
+        #[qinvokable]
+        #[cxx_name = "trashEntries"]
+        fn trash_entries(self: Pin<&mut FileListModel>, names_joined: &QString);
+
+        #[qinvokable]
         #[cxx_name = "collapseTree"]
         fn collapse_all_tree(self: Pin<&mut FileListModel>);
 
@@ -721,6 +735,9 @@ pub struct FileListModelRust {
     usage_text: QString,
     usage_scan_running: bool,
     usage_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    duplicates_text: QString,
+    duplicate_scan_running: bool,
+    duplicate_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Backing for the pinnedFoldersJoined qproperty.
     pinned_folders_joined: QString,
     /// Backing for the cursorRow qproperty (-1 = no cursor).
@@ -856,6 +873,9 @@ impl Default for FileListModelRust {
             usage_text: QString::from(""),
             usage_scan_running: false,
             usage_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            duplicates_text: QString::from(""),
+            duplicate_scan_running: false,
+            duplicate_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             cursor_row: -1,
             cursor_anchor_row: -1,
             history_back: Vec::new(),
@@ -1742,6 +1762,98 @@ impl qobject::FileListModel {
     fn cancel_usage_scan(&self) {
         self.usage_generation
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn start_duplicate_scan(mut self: core::pin::Pin<&mut Self>) {
+        use std::sync::atomic::Ordering;
+        let root = PathBuf::from(self.current_path.to_string());
+        let include_hidden = self.show_hidden;
+        let generation = self.duplicate_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let gen_arc = self.duplicate_generation.clone();
+        self.as_mut().set_duplicates_text(QString::from(""));
+        self.as_mut().set_duplicate_scan_running(true);
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let stop_gen = gen_arc.clone();
+            let groups = tokio::task::spawn_blocking(move || {
+                fm_core::duplicates::find_duplicates(&root, include_hidden, 20000, &|| {
+                    stop_gen.load(Ordering::SeqCst) != generation
+                })
+            })
+            .await
+            .unwrap_or_default();
+            let text = groups
+                .iter()
+                .map(|group| {
+                    let mut line = group.size.to_string();
+                    for path in &group.paths {
+                        line.push('\u{1f}');
+                        line.push_str(path);
+                    }
+                    line
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let _ = qt_thread.queue(move |mut model| {
+                if gen_arc.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                model.as_mut().set_duplicates_text(QString::from(&text));
+                model.as_mut().set_duplicate_scan_running(false);
+            });
+        });
+    }
+
+    fn cancel_duplicate_scan(&self) {
+        self.duplicate_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn trash_entries(mut self: core::pin::Pin<&mut Self>, names_joined: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let targets: Vec<PathBuf> = names_joined
+            .to_string()
+            .lines()
+            .filter(|s| !s.is_empty())
+            .map(|name| current.join(name))
+            .collect();
+        if targets.is_empty() {
+            return;
+        }
+
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Deleting…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let mut failed: usize = 0;
+            let mut pairs: Vec<(PathBuf, PathBuf)> = Vec::new();
+            for target in targets {
+                match fm_core::trash::move_to_trash(&target).await {
+                    Ok(trashed) => pairs.push((target, trashed)),
+                    Err(e) => {
+                        eprintln!("trash_entries failed for {}: {e}", target.display());
+                        failed += 1;
+                    }
+                }
+            }
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+                if failed > 0 {
+                    model.as_mut().error_occurred(QString::from(&format!(
+                        "Couldn't delete {}",
+                        pluralize_items(failed)
+                    )));
+                }
+                if !pairs.is_empty() {
+                    let op = UndoOp::TrashDelete { pairs };
+                    let desc = op.describe();
+                    model.as_mut().rust_mut().journal.record(op);
+                    model.as_mut().operation_completed(QString::from(&desc), true);
+                }
+            });
+        });
     }
 
     fn apply_content_search(mut self: core::pin::Pin<&mut Self>, enabled: bool) {

@@ -64,6 +64,7 @@ fn main() {
                 "qml/components/ModalTransition.qml",
                 "qml/components/CommandPalette.qml",
                 "qml/components/DiskUsageDialog.qml",
+                "qml/components/DuplicatesDialog.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))
