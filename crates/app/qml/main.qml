@@ -1867,6 +1867,14 @@ Window {
             }
             onOpenInNewTabRequested: (name) => window.openPathInNewTab(fileModel.currentPath + "/" + name)
             onOpenWithRequested: (name) => window.openOpenWithDialog(name)
+            onCompressRequested: (name) => {
+                if (itemContextMenu.selectionCount > 1) {
+                    fileModel.compressEntries(fileModel.selectedNamesJoined())
+                } else {
+                    fileModel.compressEntries(name)
+                }
+            }
+            onExtractRequested: (name) => fileModel.extractEntry(name)
             onRenameRequested: (name) => window.openRenameDialog(name)
             onDuplicateRequested: (name) => {
                 if (itemContextMenu.selectionCount > 1) {

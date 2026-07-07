@@ -30,12 +30,6 @@ transfer indicator and cancellation plumbing for progress. The biggest
 remaining functional gap for a daily driver — fm-core feature first,
 own spec.
 
-### 3. Batch rename
-
-RenameDialog is single-item. Pattern-based renamer over the selection
-(find/replace, numbering, live old → new preview list), reachable from
-the selection toolbar and context menu.
-
 ### 4. Tab ergonomics batch
 
 Middle-click a folder opens it in a background tab; middle-click a tab
@@ -90,7 +84,7 @@ and toolbar at all.
 
 ## Suggested order
 
-**1 + 4 + 5** as the "power navigation" slice (in progress). **2** and
-**3** each as their own spec'd feature (both fm-core-first). **6 + 7**
-as an expressive-polish batch. **9** as a standalone pass. **8** as
-opportunity allows.
+**1 + 4 + 5** as the "power navigation" slice (shipped). **2** as its
+own fm-core-first feature. **6 + 7** as an expressive-polish batch.
+**9** as a standalone pass. **8** as opportunity allows. (Batch rename
+was cut by request.)

@@ -27,6 +27,8 @@ Item {
     signal openRequested(string name)
     signal openInNewTabRequested(string name)
     signal openWithRequested(string name)
+    signal compressRequested(string name)
+    signal extractRequested(string name)
     signal renameRequested(string name)
     signal duplicateRequested(string name)
     signal copyPathRequested(string name)
@@ -59,6 +61,7 @@ Item {
             { icon: "content_cut", label: "Cut " + root.selectionCount + " items", action: "cut" },
             { icon: "content_copy", label: "Copy " + root.selectionCount + " items", action: "copy" },
             { icon: "file_copy", label: "Duplicate " + root.selectionCount + " items", action: "duplicate" },
+            { icon: "folder_zip", label: "Compress " + root.selectionCount + " items", action: "compress" },
             { icon: "delete", label: "Delete " + root.selectionCount + " items", action: "delete", destructive: true }
         ]
         : [
@@ -67,15 +70,21 @@ Item {
             { icon: "tab", label: "Open in New Tab", action: "openInNewTab" }
         ] : [
             { icon: "apps", label: "Open with…", action: "openWith" }
-        ]).concat([
+        ]).concat(root.entryIsArchive ? [
+            { icon: "unarchive", label: "Extract", action: "extract" }
+        ] : []).concat([
             { icon: "content_cut", label: "Cut", action: "cut" },
             { icon: "content_copy", label: "Copy", action: "copy" },
             { icon: "edit", label: "Rename", action: "rename" },
             { icon: "file_copy", label: "Duplicate", action: "duplicate" },
+            { icon: "folder_zip", label: "Compress", action: "compress" },
             { icon: "link", label: "Copy Path", action: "copyPath" },
             { icon: "delete", label: "Delete", action: "delete", destructive: true },
             { icon: "info", label: "Properties", action: "properties" }
         ])
+
+    readonly property bool entryIsArchive: !root.entryIsDir
+        && /\.(zip|tgz|txz|tbz2|7z|rar|tar|tar\.(gz|xz|zst|bz2))$/i.test(root.entryName)
 
     function popup(x, y, name, isDir, size, modified, mimeType, permissions, selectionCount, isTrashView) {
         root.entryName = name
@@ -194,6 +203,8 @@ Item {
                             switch (menuItem.modelData.action) {
                             case "open": root.openRequested(root.entryName); break
                             case "openInNewTab": root.openInNewTabRequested(root.entryName); break
+                            case "compress": root.compressRequested(root.entryName); break
+                            case "extract": root.extractRequested(root.entryName); break
                             case "openWith": root.openWithRequested(root.entryName); break
                             case "cut": root.cutRequested(root.entryName); break
                             case "copy": root.copyRequested(root.entryName); break

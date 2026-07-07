@@ -571,6 +571,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "collapseTree"]
         fn collapse_all_tree(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "compressEntries"]
+        fn compress_entries(self: Pin<&mut FileListModel>, names_joined: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "extractEntry"]
+        fn extract_entry(self: Pin<&mut FileListModel>, name: &QString);
     }
 }
 
@@ -1952,6 +1960,103 @@ impl qobject::FileListModel {
                     let desc = op.describe();
                     model.as_mut().rust_mut().journal.record(op);
                     model.as_mut().operation_completed(QString::from(&desc), true);
+                }
+            });
+        });
+    }
+
+    fn compress_entries(mut self: core::pin::Pin<&mut Self>, names_joined: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let names: Vec<String> = names_joined
+            .to_string()
+            .lines()
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        if names.is_empty() {
+            return;
+        }
+        let stem = if names.len() == 1 {
+            let leaf = names[0].rsplit('/').next().unwrap_or(&names[0]);
+            fm_core::archive::archive_stem(leaf)
+        } else {
+            "Archive".to_string()
+        };
+        let dest = fm_core::archive::unique_sibling(&current, &stem, ".zip");
+
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Compressing…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let count = names.len();
+            let result = fm_core::archive::compress(&current, &names, &dest).await;
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+                match result {
+                    Ok(()) => {
+                        let dest_name = dest
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        model.as_mut().operation_completed(
+                            QString::from(&format!(
+                                "Compressed {} into \"{dest_name}\"",
+                                pluralize_items(count)
+                            )),
+                            false,
+                        );
+                    }
+                    Err(e) => model
+                        .as_mut()
+                        .error_occurred(QString::from(&format!("Couldn't compress: {e}"))),
+                }
+            });
+        });
+    }
+
+    fn extract_entry(mut self: core::pin::Pin<&mut Self>, name: &QString) {
+        let current = PathBuf::from(self.current_path.to_string());
+        let rel = name.to_string();
+        if rel.is_empty() {
+            return;
+        }
+        let archive_path = current.join(&rel);
+        let parent = archive_path
+            .parent()
+            .unwrap_or(&current)
+            .to_path_buf();
+        let leaf = rel.rsplit('/').next().unwrap_or(&rel);
+        let dest = fm_core::archive::unique_sibling(
+            &parent,
+            &fm_core::archive::archive_stem(leaf),
+            "",
+        );
+
+        self.as_mut().set_is_busy(true);
+        self.as_mut().set_busy_label(QString::from("Extracting…"));
+
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let result = fm_core::archive::extract(&archive_path, &dest).await;
+            let _ = qt_thread.queue(move |mut model| {
+                model.as_mut().set_is_busy(false);
+                model.as_mut().refresh_entries_diff();
+                match result {
+                    Ok(()) => {
+                        let dest_name = dest
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        model.as_mut().operation_completed(
+                            QString::from(&format!("Extracted into \"{dest_name}\"")),
+                            false,
+                        );
+                    }
+                    Err(e) => model
+                        .as_mut()
+                        .error_occurred(QString::from(&format!("Couldn't extract: {e}"))),
                 }
             });
         });
