@@ -66,9 +66,9 @@ Item {
         // filename makes an invalid URI that strict receivers mangle or
         // reject; our own DropAreas decode symmetrically on the way in.
         var uris = names.map((n) => "file://" + root.fileModel.entryAbsolutePath(n).split("/").map(encodeURIComponent).join("/"))
-        root.grabToImage((result) => {
-            root.Window.window.startInternalDrag(uris.join("\r\n"), result.url)
-        })
+        root.Window.window.startInternalDragWithGhost(
+            uris.join("\r\n"), names.length,
+            Format.iconForKey(root.iconKey, root.isDir), root.displayName)
     }
 
     width: ListView.view ? ListView.view.width : 0

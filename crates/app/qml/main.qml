@@ -66,6 +66,91 @@ Window {
         dragProxy.Drag.active = true
     }
 
+    function startInternalDragWithGhost(urisJoined, count, glyph, label) {
+        dragGhost.glyph = glyph
+        dragGhost.label = label
+        dragGhost.count = count
+        dragGhost.grabToImage((result) => {
+            window.startInternalDrag(urisJoined, result.url)
+        })
+    }
+
+    Item {
+        id: dragGhost
+        x: -10000
+        y: -10000
+        width: ghostCard.width + 14
+        height: ghostCard.height + 14
+
+        property string glyph: "draft"
+        property string label: ""
+        property int count: 1
+
+        Rectangle {
+            x: 8
+            y: 2
+            width: ghostCard.width
+            height: ghostCard.height
+            radius: Shape.medium
+            color: Elevation.surfaceAt(2)
+            border.width: 1
+            border.color: Color.scheme.outlineVariant
+            visible: dragGhost.count > 1
+            rotation: 3
+        }
+
+        Rectangle {
+            id: ghostCard
+            y: 8
+            width: 52 + ghostLabel.width
+            height: 44
+            radius: Shape.medium
+            color: Color.scheme.secondaryContainer
+            border.width: 1
+            border.color: Color.scheme.outlineVariant
+
+            Icon {
+                x: 12
+                anchors.verticalCenter: parent.verticalCenter
+                content: dragGhost.glyph
+                iconSize: 20
+                color: Color.scheme.secondaryContainerText
+            }
+
+            Text {
+                id: ghostLabel
+                x: 40
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, 140)
+                elide: Text.ElideMiddle
+                text: dragGhost.label
+                color: Color.scheme.secondaryContainerText
+                font.family: Type.labelLarge.family
+                font.weight: Type.labelLarge.weight
+                font.pixelSize: Type.labelLarge.size
+            }
+        }
+
+        Rectangle {
+            visible: dragGhost.count > 1
+            x: ghostCard.width - 8
+            y: 0
+            width: 22
+            height: 22
+            radius: Shape.full
+            color: Color.scheme.primary
+
+            Text {
+                anchors.centerIn: parent
+                text: dragGhost.count > 99 ? "99+" : dragGhost.count
+                color: Color.scheme.primaryText
+                font.family: Type.labelMedium.family
+                font.weight: Font.DemiBold
+                font.pixelSize: dragGhost.count > 99 ? 9 : Type.labelMedium.size
+            }
+        }
+    }
+
     // Shared by the two view-background DropAreas and the edge
     // auto-scroll strips: a drop on empty space imports/moves into the
     // current folder. An internal drag dropped back into the folder it
