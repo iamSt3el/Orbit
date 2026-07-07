@@ -177,8 +177,6 @@ Rectangle {
                 required property var modelData
 
                 readonly property bool isActive: modelData.path.length > 0 && modelData.path === root.currentPath
-                // Only the active (selected) row is highlighted — no hover
-                // feedback on the others.
                 readonly property bool highlighted: isActive
 
                 width: parent.width
@@ -195,7 +193,8 @@ Rectangle {
                 Rectangle {
                     anchors.fill: parent
                     radius: Shape.medium
-                    color: navItem.highlighted ? Color.scheme.primary : "transparent"
+                    color: navItem.highlighted ? Color.scheme.primary
+                        : (_area.containsMouse ? Elevation.surfaceAt(1) : "transparent")
                     Behavior on color { ColorAnimation { duration: 150 } }
 
                     scale: navItem.highlighted ? 1 : 0.96

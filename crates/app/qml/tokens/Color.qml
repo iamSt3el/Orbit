@@ -108,4 +108,21 @@ QtObject {
     }
 
     readonly property QtObject scheme: custom !== null ? customScheme : palette
+
+    function _luma(c) {
+        return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+    }
+
+    readonly property color folderIcon: {
+        var c = scheme.primary
+        var h = c.hslHue < 0 ? 0 : c.hslHue
+        var darkSurface = _luma(scheme.surface) < 0.5
+        if (darkSurface && _luma(c) < 0.45) {
+            return Qt.hsla(h, c.hslSaturation, 0.72, 1)
+        }
+        if (!darkSurface && _luma(c) > 0.75) {
+            return Qt.hsla(h, c.hslSaturation, 0.35, 1)
+        }
+        return c
+    }
 }

@@ -459,6 +459,7 @@ Window {
     }
 
     property rect _containerSourceRect: Qt.rect(0, 0, 0, 0)
+    readonly property real dialogCenterOffsetX: (200 - (window.previewVisible ? 270 : 0)) / 2
 
     function noteContainerSource(x, y, w, h) {
         window._containerSourceRect = Qt.rect(x, y, w, h)
@@ -2015,6 +2016,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: NewFolderDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             onAccepted: (name) => fileModel.createFolder(name)
             onClosed: Qt.callLater(() => newFolderDialogLoader.active = false)
         }
@@ -2025,6 +2027,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: NewFileDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             onAccepted: (name) => fileModel.createFile(name)
             onClosed: Qt.callLater(() => newFileDialogLoader.active = false)
         }
@@ -2122,6 +2125,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: RenameDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             onAccepted: (oldName, newName) => fileModel.renameEntry(oldName, newName)
             onClosed: Qt.callLater(() => renameDialogLoader.active = false)
         }
@@ -2132,6 +2136,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: PropertiesDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             fileModel: window.fileListModel
             onClosed: Qt.callLater(() => propertiesDialogLoader.active = false)
         }
@@ -2142,6 +2147,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: ConfirmDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             title: "Move to Trash"
             confirmLabel: "Delete"
             onConfirmed: {
@@ -2160,6 +2166,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: ConfirmDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             title: "Delete Permanently"
             confirmLabel: "Delete Permanently"
             onConfirmed: {
@@ -2188,6 +2195,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: OpenWithDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             fileModel: window.fileListModel
             onClosed: Qt.callLater(() => openWithDialogLoader.active = false)
         }
@@ -2208,6 +2216,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: ConfirmDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             title: "Empty Trash"
             confirmLabel: "Empty Trash"
             onConfirmed: fileModel.emptyTrash()
@@ -2220,6 +2229,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: SettingsDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             fileModel: window.fileListModel
             onClosed: Qt.callLater(() => settingsDialogLoader.active = false)
         }
@@ -2242,6 +2252,7 @@ Window {
         anchors.fill: parent
         active: false
         sourceComponent: ConflictDialog {
+            centerOffsetX: window.dialogCenterOffsetX
             onResolved: (mode) => fileModel.resolveConflicts(mode)
             onClosed: Qt.callLater(() => conflictDialogLoader.active = false)
         }

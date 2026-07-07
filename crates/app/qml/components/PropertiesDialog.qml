@@ -29,6 +29,7 @@ Item {
     z: 2000
 
     property rect sourceRect: Qt.rect(0, 0, 0, 0)
+    property real centerOffsetX: 0
 
     // See ContextMenu.qml — lets the Loader wrapping this component tear
     // the instance down once it hides.
@@ -57,7 +58,7 @@ Item {
             card.height = root.sourceRect.height
             card.radius = Shape.small
         } else {
-            card.x = (root.width - card.finalW * 0.9) / 2
+            card.x = (root.width - card.finalW * 0.9) / 2 + root.centerOffsetX
             card.y = (root.height - card.finalH * 0.9) / 2
             card.width = card.finalW * 0.9
             card.height = card.finalH * 0.9
@@ -153,7 +154,7 @@ Item {
     SequentialAnimation {
         id: closeAnim
         ParallelAnimation {
-            NumberAnimation { target: card; property: "x"; to: root.sourceRect.width > 0 ? root.sourceRect.x : (root.width - card.finalW * 0.9) / 2; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+            NumberAnimation { target: card; property: "x"; to: root.sourceRect.width > 0 ? root.sourceRect.x : (root.width - card.finalW * 0.9) / 2 + root.centerOffsetX; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
             NumberAnimation { target: card; property: "y"; to: root.sourceRect.width > 0 ? root.sourceRect.y : (root.height - card.finalH * 0.9) / 2; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
             NumberAnimation { target: card; property: "width"; to: root.sourceRect.width > 0 ? root.sourceRect.width : card.finalW * 0.9; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
             NumberAnimation { target: card; property: "height"; to: root.sourceRect.width > 0 ? root.sourceRect.height : card.finalH * 0.9; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
@@ -175,7 +176,7 @@ Item {
 
         readonly property real finalW: Math.min(400, root.width - 40)
         readonly property real finalH: _content.implicitHeight + 40
-        readonly property real finalX: (root.width - finalW) / 2
+        readonly property real finalX: (root.width - finalW) / 2 + root.centerOffsetX
         readonly property real finalY: (root.height - finalH) / 2
 
         Column {
@@ -237,7 +238,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     content: root.entryIsDir ? "folder" : "description"
                     iconSize: 40
-                    color: root.entryIsDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
+                    color: root.entryIsDir ? Color.folderIcon : Color.scheme.surfaceVariantText
                 }
 
                 Text {

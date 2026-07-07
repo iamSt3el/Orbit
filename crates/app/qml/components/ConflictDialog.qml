@@ -22,22 +22,38 @@ Item {
     visible: false
     z: 2000
 
+    property real centerOffsetX: 0
+
+    ModalTransition {
+        id: _transition
+        card: dialog
+        scrim: _scrim
+        onExited: {
+            root.visible = false
+            root.resolved(root._pendingMode)
+            root.closed()
+        }
+    }
+
     function open(namesJoined, count) {
         root.conflictNames = namesJoined.length > 0 ? namesJoined.split("\n") : []
         root.conflictCount = count
         visible = true
+        _transition.enter()
         root.forceActiveFocus()
     }
 
+    property string _pendingMode: "cancel"
+
     function finish(mode) {
-        visible = false
-        root.resolved(mode)
-        root.closed()
+        root._pendingMode = mode
+        _transition.exit()
     }
 
     Keys.onEscapePressed: root.finish("cancel")
 
     Rectangle {
+        id: _scrim
         anchors.fill: parent
         color: Color.scheme.surface
         opacity: 0.4
@@ -60,6 +76,7 @@ Item {
         radius: Shape.extraLarge
         color: Elevation.surfaceAt(3)
         anchors.centerIn: parent
+        anchors.horizontalCenterOffset: root.centerOffsetX
 
         Column {
             id: _column

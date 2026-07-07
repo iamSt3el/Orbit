@@ -15,22 +15,35 @@ Item {
     visible: false
     z: 2000
 
+    property real centerOffsetX: 0
+
+    ModalTransition {
+        id: _transition
+        card: dialog
+        scrim: _scrim
+        onExited: {
+            root.visible = false
+            root.closed()
+        }
+    }
+
     property string _oldName: ""
 
     function open(name) {
         root._oldName = name
         nameInput.text = name
         visible = true
+        _transition.enter()
         nameInput.forceActiveFocus()
         nameInput.selectAll()
     }
 
     function close() {
-        visible = false
-        root.closed()
+        _transition.exit()
     }
 
     Rectangle {
+        id: _scrim
         anchors.fill: parent
         color: Color.scheme.surface
         opacity: 0.4
@@ -55,6 +68,7 @@ Item {
         radius: Shape.extraLarge
         color: Elevation.surfaceAt(3)
         anchors.centerIn: parent
+        anchors.horizontalCenterOffset: root.centerOffsetX
 
         Column {
             id: _column

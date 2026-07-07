@@ -323,7 +323,7 @@ Item {
                 anchors.centerIn: parent
                 content: Format.iconForKey(root.iconKey, root.isDir)
                 iconSize: root.iconSize
-                color: root.isDir ? Color.scheme.primary : Color.scheme.surfaceVariantText
+                color: root.isDir ? Color.folderIcon : Color.scheme.surfaceVariantText
                 visible: opacity > 0
                 opacity: thumbnail.status === Image.Ready ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 120 } }

@@ -19,22 +19,35 @@ Item {
     visible: false
     z: 2000
 
+    property real centerOffsetX: 0
+
+    ModalTransition {
+        id: _transition
+        card: dialog
+        scrim: _scrim
+        onExited: {
+            root.visible = false
+            root.closed()
+        }
+    }
+
     function open() {
         if (root.fileModel) {
             root.resumeLastPath = root.fileModel.resumeLastPath
         }
         visible = true
+        _transition.enter()
         root.forceActiveFocus()
     }
 
     function close() {
-        visible = false
-        root.closed()
+        _transition.exit()
     }
 
     Keys.onEscapePressed: root.close()
 
     Rectangle {
+        id: _scrim
         anchors.fill: parent
         color: Color.scheme.surface
         opacity: 0.4
@@ -57,6 +70,7 @@ Item {
         radius: Shape.extraLarge
         color: Elevation.surfaceAt(3)
         anchors.centerIn: parent
+        anchors.horizontalCenterOffset: root.centerOffsetX
 
         Column {
             id: _column

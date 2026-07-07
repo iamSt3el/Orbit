@@ -65,7 +65,7 @@ Rectangle {
                 visible: previewImage.status !== Image.Ready
                 content: root._info ? Format.iconForKey(root._info.iconKey, root._info.isDir) : "draft"
                 iconSize: 64
-                color: (root._info && root._info.isDir) ? Color.scheme.primary : Color.scheme.surfaceVariantText
+                color: (root._info && root._info.isDir) ? Color.folderIcon : Color.scheme.surfaceVariantText
             }
 
             Image {
