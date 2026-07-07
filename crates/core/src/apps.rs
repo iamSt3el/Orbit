@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 pub struct DesktopApp {
     pub name: String,
     pub exec: String,
+    pub icon: String,
     pub mime_types: Vec<String>,
 }
 
@@ -18,6 +19,7 @@ pub fn parse_desktop_entry(text: &str) -> Option<DesktopApp> {
     let mut in_section = false;
     let mut name = None;
     let mut exec = None;
+    let mut icon = None;
     let mut mime_types = Vec::new();
     let mut hidden = false;
     let mut is_app = false;
@@ -37,6 +39,7 @@ pub fn parse_desktop_entry(text: &str) -> Option<DesktopApp> {
         match key.trim() {
             "Name" => name = Some(value.to_string()),
             "Exec" => exec = Some(value.to_string()),
+            "Icon" => icon = Some(value.to_string()),
             "MimeType" => {
                 mime_types = value
                     .split(';')
@@ -56,8 +59,66 @@ pub fn parse_desktop_entry(text: &str) -> Option<DesktopApp> {
     Some(DesktopApp {
         name: name?,
         exec: exec?,
+        icon: icon.unwrap_or_default(),
         mime_types,
     })
+}
+
+/// Resolves a desktop entry's Icon value to an image file, searching each
+/// icon root's hicolor theme (fixed-size PNGs largest-first, then the
+/// scalable SVG) and then flat pixmap dirs. An absolute Icon value is
+/// used directly. Deliberately not a full icon-theme-spec lookup: apps
+/// are required to install into hicolor, which every theme falls back
+/// to, and the chooser has a glyph fallback for the rest.
+pub fn resolve_icon_in(
+    icon: &str,
+    icon_roots: &[PathBuf],
+    pixmap_dirs: &[PathBuf],
+) -> Option<PathBuf> {
+    if icon.is_empty() {
+        return None;
+    }
+    let as_path = Path::new(icon);
+    if as_path.is_absolute() {
+        return as_path.exists().then(|| as_path.to_path_buf());
+    }
+    const SIZES: [&str; 8] = [
+        "512x512", "256x256", "192x192", "128x128", "96x96", "64x64", "48x48", "32x32",
+    ];
+    for root in icon_roots {
+        let hicolor = root.join("hicolor");
+        for size in SIZES {
+            let p = hicolor.join(size).join("apps").join(format!("{icon}.png"));
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        let svg = hicolor.join("scalable/apps").join(format!("{icon}.svg"));
+        if svg.exists() {
+            return Some(svg);
+        }
+    }
+    for dir in pixmap_dirs {
+        for ext in ["png", "svg", "xpm"] {
+            let p = dir.join(format!("{icon}.{ext}"));
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// resolve_icon_in over the standard XDG icon locations, user-first.
+pub fn resolve_icon(icon: &str) -> Option<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(home) = crate::paths::home_dir() {
+        roots.push(home.join(".local/share/icons"));
+        roots.push(home.join(".icons"));
+    }
+    roots.push(PathBuf::from("/usr/local/share/icons"));
+    roots.push(PathBuf::from("/usr/share/icons"));
+    resolve_icon_in(icon, &roots, &[PathBuf::from("/usr/share/pixmaps")])
 }
 
 /// Whether any of an entry's MimeType patterns covers `mime` — exact

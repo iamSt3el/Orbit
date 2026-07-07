@@ -39,8 +39,8 @@ Item {
             var lines = joined.split("\n")
             for (var i = 0; i < lines.length; i++) {
                 var parts = lines[i].split("\u001f")
-                if (parts.length === 2) {
-                    parsed.push({ name: parts[0], exec: parts[1] })
+                if (parts.length >= 2) {
+                    parsed.push({ name: parts[0], exec: parts[1], iconPath: parts.length > 2 ? parts[2] : "" })
                 }
             }
         }
@@ -150,11 +150,30 @@ Item {
                     anchors.leftMargin: 12
                     spacing: 12
 
-                    Icon {
-                        content: "apps"
-                        iconSize: 20
-                        color: Color.scheme.primary
+                    Item {
+                        width: 24
+                        height: 24
                         anchors.verticalCenter: parent.verticalCenter
+
+                        Image {
+                            id: _appImage
+                            anchors.fill: parent
+                            visible: status === Image.Ready
+                            source: appRow.modelData.iconPath.length > 0
+                                ? "file://" + appRow.modelData.iconPath : ""
+                            sourceSize.width: 48
+                            sourceSize.height: 48
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                        }
+
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: _appImage.status !== Image.Ready
+                            content: "apps"
+                            iconSize: 20
+                            color: Color.scheme.primary
+                        }
                     }
 
                     Text {

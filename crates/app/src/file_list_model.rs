@@ -1391,7 +1391,12 @@ impl qobject::FileListModel {
         };
         let lines: Vec<String> = fm_core::apps::apps_for_mime(&entry.mime_type)
             .into_iter()
-            .map(|app| format!("{}\u{1f}{}", app.name, app.exec))
+            .map(|app| {
+                let icon = fm_core::apps::resolve_icon(&app.icon)
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default();
+                format!("{}\u{1f}{}\u{1f}{}", app.name, app.exec, icon)
+            })
             .collect();
         QString::from(&lines.join("\n"))
     }
