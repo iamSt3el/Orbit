@@ -885,6 +885,82 @@ Window {
                         onOptionsRequested: (x, y) => window.openViewOptionsMenu(x, y)
                     }
 
+                    Item {
+                        visible: window.fileModel ? window.fileModel.searchActive === true : false
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: visible ? 40 : 0
+                        Layout.minimumHeight: Layout.preferredHeight
+                        Layout.maximumHeight: Layout.preferredHeight
+                        Layout.leftMargin: 16
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+
+                            Repeater {
+                                model: [
+                                    { label: "Folders", kind: "folder" },
+                                    { label: "Images", kind: "image" },
+                                    { label: "Documents", kind: "document" },
+                                    { label: "Media", kind: "media" }
+                                ]
+
+                                delegate: Rectangle {
+                                    id: filterChip
+                                    required property var modelData
+                                    readonly property bool active: window.fileModel
+                                        ? window.fileModel.typeFilter === modelData.kind : false
+                                    height: 32
+                                    width: _filterChipRow.implicitWidth + 28
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    radius: Shape.small
+                                    color: active ? Color.scheme.secondaryContainer : "transparent"
+                                    border.width: active ? 0 : 1
+                                    border.color: Color.scheme.outline
+                                    Behavior on color { ColorAnimation { duration: 120 } }
+                                    Behavior on width {
+                                        SpringAnimation {
+                                            spring: Motion.springStandard.spring
+                                            damping: Motion.springStandard.damping
+                                        }
+                                    }
+
+                                    Row {
+                                        id: _filterChipRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+
+                                        Icon {
+                                            visible: filterChip.active
+                                            content: "check"
+                                            iconSize: 16
+                                            color: Color.scheme.secondaryContainerText
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+
+                                        Text {
+                                            text: filterChip.modelData.label
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            color: filterChip.active
+                                                ? Color.scheme.secondaryContainerText
+                                                : Color.scheme.surfaceVariantText
+                                            font.family: Type.labelLarge.family
+                                            font.weight: Type.labelLarge.weight
+                                            font.pixelSize: Type.labelLarge.size
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: window.fileModel.applyTypeFilter(
+                                            filterChip.active ? "" : filterChip.modelData.kind)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Current-folder headline (roadmap item 12) — the
                     // folder's display name at Expressive type scale,
                     // crossfading old→new on navigate. No horizontal

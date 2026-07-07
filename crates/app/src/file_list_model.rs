@@ -73,6 +73,7 @@ pub mod qobject {
         // by sync_pinned_folders().
         #[qproperty(QString, pinned_folders_joined, cxx_name = "pinnedFoldersJoined")]
         #[qproperty(QString, expanded_dirs_joined, cxx_name = "expandedDirsJoined")]
+        #[qproperty(QString, type_filter, cxx_name = "typeFilter")]
         // Keyboard cursor (roadmap item 7): index into the DISPLAYED rows
         // (the same space the views render), -1 = no cursor. Delegates
         // draw the focus ring off `cursorRow === index`; moveCursor/
@@ -569,6 +570,10 @@ pub mod qobject {
         fn toggle_expanded(self: Pin<&mut FileListModel>, rel_path: &QString);
 
         #[qinvokable]
+        #[cxx_name = "applyTypeFilter"]
+        fn apply_type_filter(self: Pin<&mut FileListModel>, kind: &QString);
+
+        #[qinvokable]
         #[cxx_name = "collapseTree"]
         fn collapse_all_tree(self: Pin<&mut FileListModel>);
 
@@ -695,6 +700,7 @@ pub struct FileListModelRust {
     pinned_folders: Vec<String>,
     expanded_dirs: Vec<String>,
     expanded_dirs_joined: QString,
+    type_filter: QString,
     /// Backing for the pinnedFoldersJoined qproperty.
     pinned_folders_joined: QString,
     /// Backing for the cursorRow qproperty (-1 = no cursor).
@@ -824,6 +830,7 @@ impl Default for FileListModelRust {
             pinned_folders_joined: QString::from(&settings.pinned_folders.join("\n")),
             expanded_dirs: Vec::new(),
             expanded_dirs_joined: QString::from(""),
+            type_filter: QString::from(""),
             cursor_row: -1,
             cursor_anchor_row: -1,
             history_back: Vec::new(),
@@ -857,6 +864,7 @@ impl FileListModelRust {
             &self.entries,
             &self.search_query.to_string(),
             self.show_hidden,
+            &self.type_filter.to_string(),
         );
     }
 }
@@ -924,7 +932,12 @@ fn sort_entries(entries: &mut [fm_core::FileEntry], sort_key: &str, ascending: b
 /// setting (all of them, in order, when nothing is filtered). Computed once
 /// per mutation into the `displayed` cache (see rebuild_displayed) — never
 /// on demand from data()/row_count(), which Qt calls once per role per row.
-fn matching_indices(entries: &[fm_core::FileEntry], query: &str, show_hidden: bool) -> Vec<usize> {
+fn matching_indices(
+    entries: &[fm_core::FileEntry],
+    query: &str,
+    show_hidden: bool,
+    type_filter: &str,
+) -> Vec<usize> {
     let query = query.to_lowercase();
     entries
         .iter()
@@ -938,6 +951,13 @@ fn matching_indices(entries: &[fm_core::FileEntry], query: &str, show_hidden: bo
                     .unwrap_or(true)
         })
         .filter(|(_, e)| query.is_empty() || e.name.to_lowercase().contains(&query))
+        .filter(|(_, e)| match type_filter {
+            "folder" => e.is_dir,
+            "image" => e.icon_key == "image",
+            "document" => e.icon_key == "text" || e.icon_key == "pdf",
+            "media" => e.icon_key == "video" || e.icon_key == "audio",
+            _ => true,
+        })
         .map(|(i, _)| i)
         .collect()
 }
@@ -1447,6 +1467,7 @@ impl qobject::FileListModel {
         self.as_mut().rust_mut().search_query = QString::from("");
         self.as_mut().rust_mut().selected.clear();
         self.as_mut().rust_mut().expanded_dirs.clear();
+        self.as_mut().reset_type_filter();
         self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
         self.as_mut().sync_expanded_dirs();
@@ -1622,6 +1643,24 @@ impl qobject::FileListModel {
         });
     }
 
+    fn apply_type_filter(mut self: core::pin::Pin<&mut Self>, kind: &QString) {
+        if self.type_filter.to_string() == kind.to_string() {
+            return;
+        }
+        self.as_mut().set_type_filter(kind.clone());
+        self.as_mut().begin_reset_model();
+        self.as_mut().rust_mut().rebuild_displayed();
+        self.as_mut().end_reset_model();
+        self.as_mut().clamp_cursor();
+        self.as_mut().sync_listing_stats();
+    }
+
+    fn reset_type_filter(mut self: core::pin::Pin<&mut Self>) {
+        if !self.type_filter.to_string().is_empty() {
+            self.as_mut().set_type_filter(QString::from(""));
+        }
+    }
+
     fn sync_expanded_dirs(mut self: core::pin::Pin<&mut Self>) {
         let joined = QString::from(&self.expanded_dirs.join("\n"));
         self.as_mut().set_expanded_dirs_joined(joined);
@@ -1718,6 +1757,9 @@ impl qobject::FileListModel {
 
     fn set_search_query(mut self: core::pin::Pin<&mut Self>, query: &QString) {
         self.as_mut().collapse_all_tree();
+        if query.to_string().is_empty() {
+            self.as_mut().reset_type_filter();
+        }
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().search_query = query.clone();
         self.as_mut().rust_mut().rebuild_displayed();
