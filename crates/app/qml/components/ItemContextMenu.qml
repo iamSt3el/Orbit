@@ -25,6 +25,7 @@ Item {
     property bool isTrashView: false
 
     signal openRequested(string name)
+    signal openInNewTabRequested(string name)
     signal openWithRequested(string name)
     signal renameRequested(string name)
     signal duplicateRequested(string name)
@@ -62,7 +63,9 @@ Item {
         ]
         : [
             { icon: "open_in_new", label: "Open", action: "open" }
-        ].concat(root.entryIsDir ? [] : [
+        ].concat(root.entryIsDir ? [
+            { icon: "tab", label: "Open in New Tab", action: "openInNewTab" }
+        ] : [
             { icon: "apps", label: "Open with…", action: "openWith" }
         ]).concat([
             { icon: "content_cut", label: "Cut", action: "cut" },
@@ -190,6 +193,7 @@ Item {
                             root.close()
                             switch (menuItem.modelData.action) {
                             case "open": root.openRequested(root.entryName); break
+                            case "openInNewTab": root.openInNewTabRequested(root.entryName); break
                             case "openWith": root.openWithRequested(root.entryName); break
                             case "cut": root.cutRequested(root.entryName); break
                             case "copy": root.copyRequested(root.entryName); break

@@ -198,7 +198,7 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 
             property real _pressX: 0
             property real _pressY: 0
@@ -226,6 +226,12 @@ Item {
             }
             onClicked: (mouse) => {
                 if (cellArea._dragging) {
+                    return
+                }
+                if (mouse.button === Qt.MiddleButton) {
+                    if (root.isDir) {
+                        root.Window.window.openPathInNewTab(root.fileModel.currentPath + "/" + root.name)
+                    }
                     return
                 }
                 if (mouse.button === Qt.RightButton) {

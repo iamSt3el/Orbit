@@ -74,11 +74,11 @@ Window {
     // window._internalDragActive / _internalDragSourceDir, not drop.keys,
     // which doesn't reliably carry the source's Drag.keys across this
     // platform's native drag-and-drop round-trip.
-    function handleEmptySpaceDrop(drop) {
+    function handleDropToDir(drop, destDir) {
         if (!drop.hasUrls) {
             return
         }
-        if (window._internalDragActive && window._internalDragSourceDir === fileModel.currentPath) {
+        if (window._internalDragActive && window._internalDragSourceDir === destDir) {
             drop.accepted = false
             return
         }
@@ -91,7 +91,11 @@ Window {
             // "my%20photo.jpg" path and every operation on it fails.
             paths.push(decodeURIComponent(drop.urls[i].toString().replace("file://", "")))
         }
-        fileModel.dropPaths(paths.join("\n"), fileModel.currentPath, isMove)
+        fileModel.dropPaths(paths.join("\n"), destDir, isMove)
+    }
+
+    function handleEmptySpaceDrop(drop) {
+        window.handleDropToDir(drop, fileModel.currentPath)
     }
 
     // Preview pane visibility (round-2 item 22) — session-only state,
@@ -135,13 +139,17 @@ Window {
         FileListModel {}
     }
 
-    function newTab() {
+    function openPathInNewTab(path) {
         var model = tabModelComponent.createObject(window)
-        model.navigate(fileModel.currentPath)
+        model.navigate(path)
         var tabs = window._tabModels.slice()
         tabs.push(model)
         window._tabModels = tabs
-        window._currentTab = tabs.length - 1
+    }
+
+    function newTab() {
+        window.openPathInNewTab(fileModel.currentPath)
+        window._currentTab = window._tabModels.length - 1
     }
 
     function closeTab(index) {
@@ -679,11 +687,27 @@ Window {
                                     radius: Shape.full
                                     color: active ? Color.scheme.secondaryContainer : Elevation.surfaceAt(1)
                                     Behavior on color { ColorAnimation { duration: 150 } }
+                                    border.width: _tabDropArea.containsDrag ? 2 : 0
+                                    border.color: Color.scheme.primary
 
                                     MouseArea {
                                         anchors.fill: parent
+                                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: window._currentTab = tabChip.index
+                                        onClicked: (mouse) => {
+                                            if (mouse.button === Qt.MiddleButton) {
+                                                window.closeTab(tabChip.index)
+                                            } else {
+                                                window._currentTab = tabChip.index
+                                            }
+                                        }
+                                    }
+
+                                    DropArea {
+                                        id: _tabDropArea
+                                        anchors.fill: parent
+                                        keys: ["text/uri-list"]
+                                        onDropped: (drop) => window.handleDropToDir(drop, tabChip.modelData.currentPath)
                                     }
 
                                     Row {
@@ -1786,6 +1810,7 @@ Window {
                     fileModel.openEntry(name)
                 }
             }
+            onOpenInNewTabRequested: (name) => window.openPathInNewTab(fileModel.currentPath + "/" + name)
             onOpenWithRequested: (name) => window.openOpenWithDialog(name)
             onRenameRequested: (name) => window.openRenameDialog(name)
             onDuplicateRequested: (name) => {
