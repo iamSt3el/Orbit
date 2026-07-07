@@ -381,3 +381,17 @@ async fn copy_with_progress_handles_empty_files() {
     assert_eq!(fs::metadata(&dst).unwrap().len(), 0);
 }
 
+
+#[test]
+fn disk_usage_counts_allocated_blocks_not_sparse_length() {
+    let dir = tempfile::tempdir().unwrap();
+    let sparse = dir.path().join("sparse.img");
+    let file = std::fs::File::create(&sparse).unwrap();
+    file.set_len(100 * 1024 * 1024).unwrap();
+    std::fs::write(dir.path().join("real.txt"), vec![7u8; 8192]).unwrap();
+
+    let usage = fm_core::ops::path_disk_usage(dir.path());
+
+    assert!(usage < 1024 * 1024, "sparse length must not count: {usage}");
+    assert!(usage >= 8192, "real data must count: {usage}");
+}

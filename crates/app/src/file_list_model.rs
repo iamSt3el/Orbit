@@ -1796,14 +1796,15 @@ impl qobject::FileListModel {
                     let name = entry.name.clone();
                     runtime().spawn(async move {
                         let size = tokio::task::spawn_blocking(move || {
-                            fm_core::ops::path_size(&child)
+                            fm_core::ops::path_disk_usage(&child)
                         })
                         .await
                         .unwrap_or(0);
                         let _ = tx.send((name, size, true));
                     });
                 } else {
-                    let _ = tx.send((entry.name, entry.size, false));
+                    let size = fm_core::ops::path_disk_usage(&entry.path);
+                    let _ = tx.send((entry.name, size, false));
                 }
             }
             drop(tx);

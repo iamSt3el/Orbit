@@ -111,6 +111,28 @@ pub fn path_size(path: &Path) -> u64 {
     }
 }
 
+/// Allocated-blocks recursive total (what `du` reports) rather than
+/// apparent byte length — sparse files (Docker/VM disk images) report
+/// terabytes of `len()` while occupying a fraction of that on disk.
+/// Symlinks are counted by their own metadata and never followed.
+pub fn path_disk_usage(path: &Path) -> u64 {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return 0;
+    };
+    if metadata.is_dir() {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return 0;
+        };
+        entries
+            .flatten()
+            .map(|entry| path_disk_usage(&entry.path()))
+            .sum()
+    } else {
+        metadata.blocks() * 512
+    }
+}
+
 /// Recursively totals a directory's bytes and entry count, invoking
 /// `progress(bytes_so_far, items_so_far)` once per entry encountered.
 /// Items count every entry recursively — files AND directories — matching
