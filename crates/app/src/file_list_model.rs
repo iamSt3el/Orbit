@@ -488,6 +488,32 @@ pub mod qobject {
         #[cxx_name = "saveSettings"]
         fn save_settings(self: &FileListModel);
 
+        #[qinvokable]
+        #[cxx_name = "saveSession"]
+        fn save_session(
+            self: &FileListModel,
+            tabs_joined: &QString,
+            active_tab: i32,
+            width: i32,
+            height: i32,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "savedTabsJoined"]
+        fn saved_tabs_joined(self: &FileListModel) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "savedActiveTab"]
+        fn saved_active_tab(self: &FileListModel) -> i32;
+
+        #[qinvokable]
+        #[cxx_name = "savedWindowWidth"]
+        fn saved_window_width(self: &FileListModel) -> i32;
+
+        #[qinvokable]
+        #[cxx_name = "savedWindowHeight"]
+        fn saved_window_height(self: &FileListModel) -> i32;
+
         /// Populates themeColorsText immediately with the file's current
         /// contents (if any) and starts a background watch on its parent
         /// directory (not the file itself — editors commonly replace a
@@ -603,6 +629,10 @@ pub struct FileListModelRust {
     icon_size_level: QString,
     saved_last_path: QString,
     resume_last_path: bool,
+    restored_tabs_joined: QString,
+    restored_active_tab: i32,
+    restored_window_width: i32,
+    restored_window_height: i32,
     app_config_dir: QString,
     is_busy: bool,
     busy_label: QString,
@@ -752,6 +782,10 @@ impl Default for FileListModelRust {
             icon_size_level: QString::from(&settings.icon_size_level),
             saved_last_path: QString::from(&settings.last_path),
             resume_last_path: settings.resume_last_path,
+            restored_tabs_joined: QString::from(&settings.open_tabs.join("\n")),
+            restored_active_tab: settings.active_tab as i32,
+            restored_window_width: settings.window_width as i32,
+            restored_window_height: settings.window_height as i32,
             app_config_dir: path_or_empty(fm_core::paths::app_config_dir()),
             is_busy: false,
             busy_label: QString::from(""),
@@ -2768,19 +2802,50 @@ impl qobject::FileListModel {
     /// iconSizeLevel, or a ViewOptionsMenu setting, since those don't
     /// otherwise trigger a Rust-side write.
     fn save_settings(&self) {
-        let settings = fm_core::settings::Settings {
-            view_mode: self.view_mode.to_string(),
-            icon_size_level: self.icon_size_level.to_string(),
-            sort_key: self.sort_key.to_string(),
-            sort_ascending: self.sort_ascending,
-            show_hidden: self.show_hidden,
-            last_path: self.current_path.to_string(),
-            resume_last_path: self.resume_last_path,
-            pinned_folders: self.pinned_folders.clone(),
-        };
+        let mut settings = fm_core::settings::Settings::load();
+        settings.view_mode = self.view_mode.to_string();
+        settings.icon_size_level = self.icon_size_level.to_string();
+        settings.sort_key = self.sort_key.to_string();
+        settings.sort_ascending = self.sort_ascending;
+        settings.show_hidden = self.show_hidden;
+        settings.last_path = self.current_path.to_string();
+        settings.resume_last_path = self.resume_last_path;
+        settings.pinned_folders = self.pinned_folders.clone();
         if let Err(e) = settings.save() {
             eprintln!("save_settings failed: {e}");
         }
+    }
+
+    fn save_session(&self, tabs_joined: &QString, active_tab: i32, width: i32, height: i32) {
+        let mut settings = fm_core::settings::Settings::load();
+        settings.open_tabs = tabs_joined
+            .to_string()
+            .split('\n')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        settings.active_tab = active_tab.max(0) as u32;
+        settings.window_width = width.max(0) as u32;
+        settings.window_height = height.max(0) as u32;
+        if let Err(e) = settings.save() {
+            eprintln!("save_session failed: {e}");
+        }
+    }
+
+    fn saved_tabs_joined(&self) -> QString {
+        self.restored_tabs_joined.clone()
+    }
+
+    fn saved_active_tab(&self) -> i32 {
+        self.restored_active_tab
+    }
+
+    fn saved_window_width(&self) -> i32 {
+        self.restored_window_width
+    }
+
+    fn saved_window_height(&self) -> i32 {
+        self.restored_window_height
     }
 
     fn is_show_hidden(&self) -> bool {

@@ -36,6 +36,10 @@ fn save_then_load_round_trips() {
         last_path: "/home/steel/Downloads".to_string(),
         resume_last_path: false,
         pinned_folders: vec!["/home/steel/projects".to_string()],
+        open_tabs: vec!["/home/steel".to_string(), "/tmp".to_string()],
+        active_tab: 1,
+        window_width: 1280,
+        window_height: 800,
     };
     settings.save_to(&path).unwrap();
 

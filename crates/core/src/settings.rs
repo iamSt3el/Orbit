@@ -17,6 +17,10 @@ pub struct Settings {
     /// Absolute paths of folders the user pinned to the sidebar
     /// (roadmap item 9) — drag a folder onto the sidebar to add one.
     pub pinned_folders: Vec<String>,
+    pub open_tabs: Vec<String>,
+    pub active_tab: u32,
+    pub window_width: u32,
+    pub window_height: u32,
 }
 
 impl Default for Settings {
@@ -30,6 +34,10 @@ impl Default for Settings {
             last_path: String::new(),
             resume_last_path: true,
             pinned_folders: Vec::new(),
+            open_tabs: Vec::new(),
+            active_tab: 0,
+            window_width: 0,
+            window_height: 0,
         }
     }
 }

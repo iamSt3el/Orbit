@@ -210,6 +210,7 @@ Window {
                 window._navDirection = "neutral"
             }
             window._lastPath = newPath
+            _sessionSaveDebounce.restart()
         }
     }
 
@@ -233,14 +234,67 @@ Window {
             // startThemeColorsWatch()), not QML XHR, now that the model
             // is ready.
             initialTabModel.startThemeColorsWatch()
-            // CLI arg wins if given; otherwise resume wherever the last
-            // session left off (if that's enabled in Settings); otherwise
-            // fall back to home.
-            var startPath = Qt.application.arguments.length > 1
-                ? Qt.application.arguments[1]
-                : (initialTabModel.resumeLastPath && initialTabModel.savedLastPath.length > 0 ? initialTabModel.savedLastPath : "/home")
-            navigate(startPath)
+            var savedW = initialTabModel.savedWindowWidth()
+            var savedH = initialTabModel.savedWindowHeight()
+            if (savedW >= 400 && savedH >= 300) {
+                window.width = savedW
+                window.height = savedH
+            }
+            if (Qt.application.arguments.length > 1) {
+                navigate(Qt.application.arguments[1])
+                return
+            }
+            if (initialTabModel.resumeLastPath) {
+                var tabsJoined = initialTabModel.savedTabsJoined()
+                if (tabsJoined.length > 0) {
+                    var tabPaths = tabsJoined.split("\n")
+                    navigate(tabPaths[0])
+                    var models = [initialTabModel]
+                    for (var i = 1; i < tabPaths.length; i++) {
+                        var m = tabModelComponent.createObject(window)
+                        m.navigate(tabPaths[i])
+                        models.push(m)
+                    }
+                    window._tabModels = models
+                    window._currentTab = Math.max(0, Math.min(models.length - 1, initialTabModel.savedActiveTab()))
+                    return
+                }
+                if (initialTabModel.savedLastPath.length > 0) {
+                    navigate(initialTabModel.savedLastPath)
+                    return
+                }
+            }
+            navigate("/home")
         }
+    }
+
+    function saveSession() {
+        if (!fileModel) {
+            return
+        }
+        var paths = []
+        for (var i = 0; i < window._tabModels.length; i++) {
+            var p = window._tabModels[i].currentPath
+            if (p && p.length > 0) {
+                paths.push(p)
+            }
+        }
+        if (paths.length === 0) {
+            return
+        }
+        fileModel.saveSession(paths.join("\n"), window._currentTab, window.width, window.height)
+    }
+
+    onClosing: window.saveSession()
+    onWidthChanged: _sessionSaveDebounce.restart()
+    onHeightChanged: _sessionSaveDebounce.restart()
+    on_TabModelsChanged: _sessionSaveDebounce.restart()
+    on_CurrentTabChanged: _sessionSaveDebounce.restart()
+
+    Timer {
+        id: _sessionSaveDebounce
+        interval: 1000
+        onTriggered: window.saveSession()
     }
 
     function parentPath(path) {
