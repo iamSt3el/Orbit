@@ -25,7 +25,7 @@ Rectangle {
     width: parent ? parent.width : implicitWidth
     implicitHeight: _content.implicitHeight + 28
 
-    color: Color.scheme.surfaceContainerHigh
+    color: Qt.alpha(Color.scheme.surfaceText, 0.07)
     topLeftRadius: root.isFirst ? Shape.largeIncreased : Shape.extraSmall
     topRightRadius: root.isFirst ? Shape.largeIncreased : Shape.extraSmall
     bottomLeftRadius: root.isLast ? Shape.largeIncreased : Shape.extraSmall
