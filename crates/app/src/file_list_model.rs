@@ -77,6 +77,8 @@ pub mod qobject {
         #[qproperty(bool, content_search, cxx_name = "contentSearch")]
         #[qproperty(QString, usage_text, cxx_name = "usageText")]
         #[qproperty(bool, usage_scan_running, cxx_name = "usageScanRunning")]
+        #[qproperty(i32, usage_done, cxx_name = "usageDone")]
+        #[qproperty(i32, usage_total, cxx_name = "usageTotal")]
         #[qproperty(QString, duplicates_text, cxx_name = "duplicatesText")]
         #[qproperty(bool, duplicate_scan_running, cxx_name = "duplicateScanRunning")]
         #[qproperty(QString, rules_joined, cxx_name = "rulesJoined")]
@@ -747,6 +749,8 @@ pub struct FileListModelRust {
     content_matches: std::collections::HashMap<String, String>,
     usage_text: QString,
     usage_scan_running: bool,
+    usage_done: i32,
+    usage_total: i32,
     usage_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
     duplicates_text: QString,
     duplicate_scan_running: bool,
@@ -887,6 +891,8 @@ impl Default for FileListModelRust {
             content_matches: std::collections::HashMap::new(),
             usage_text: QString::from(""),
             usage_scan_running: false,
+            usage_done: 0,
+            usage_total: 0,
             usage_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             duplicates_text: QString::from(""),
             duplicate_scan_running: false,
@@ -1766,24 +1772,58 @@ impl qobject::FileListModel {
         let generation = self.usage_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let gen_arc = self.usage_generation.clone();
         self.as_mut().set_usage_text(QString::from(""));
+        self.as_mut().set_usage_done(0);
+        self.as_mut().set_usage_total(0);
         self.as_mut().set_usage_scan_running(true);
         let qt_thread = self.qt_thread();
         runtime().spawn(async move {
             let entries = gather_entries(&dir).await;
-            let mut rows: Vec<(String, u64, bool)> = Vec::new();
+            let total = entries.len();
+            {
+                let g = gen_arc.clone();
+                let _ = qt_thread.queue(move |mut model| {
+                    if g.load(Ordering::SeqCst) != generation {
+                        return;
+                    }
+                    model.as_mut().set_usage_total(total as i32);
+                });
+            }
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, u64, bool)>();
             for entry in entries {
+                let tx = tx.clone();
+                if entry.is_dir {
+                    let child = entry.path.clone();
+                    let name = entry.name.clone();
+                    runtime().spawn(async move {
+                        let size = tokio::task::spawn_blocking(move || {
+                            fm_core::ops::path_size(&child)
+                        })
+                        .await
+                        .unwrap_or(0);
+                        let _ = tx.send((name, size, true));
+                    });
+                } else {
+                    let _ = tx.send((entry.name, entry.size, false));
+                }
+            }
+            drop(tx);
+
+            let mut rows: Vec<(String, u64, bool)> = Vec::new();
+            let mut done: usize = 0;
+            let mut last_emit =
+                std::time::Instant::now() - std::time::Duration::from_secs(1);
+            while let Some(row) = rx.recv().await {
                 if gen_arc.load(Ordering::SeqCst) != generation {
                     return;
                 }
-                let size = if entry.is_dir {
-                    let child = entry.path.clone();
-                    tokio::task::spawn_blocking(move || fm_core::ops::path_size(&child))
-                        .await
-                        .unwrap_or(0)
-                } else {
-                    entry.size
-                };
-                rows.push((entry.name, size, entry.is_dir));
+                done += 1;
+                rows.push(row);
+                if done < total
+                    && last_emit.elapsed() < std::time::Duration::from_millis(150)
+                {
+                    continue;
+                }
+                last_emit = std::time::Instant::now();
                 rows.sort_by(|a, b| b.1.cmp(&a.1));
                 let text = rows
                     .iter()
@@ -1793,11 +1833,13 @@ impl qobject::FileListModel {
                     .collect::<Vec<_>>()
                     .join("\n");
                 let g = gen_arc.clone();
+                let done_now = done as i32;
                 let _ = qt_thread.queue(move |mut model| {
                     if g.load(Ordering::SeqCst) != generation {
                         return;
                     }
                     model.as_mut().set_usage_text(QString::from(&text));
+                    model.as_mut().set_usage_done(done_now);
                 });
             }
             let g = gen_arc.clone();

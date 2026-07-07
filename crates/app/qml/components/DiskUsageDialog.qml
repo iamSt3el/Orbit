@@ -217,6 +217,19 @@ Item {
                 font.pixelSize: Type.titleMedium.size
             }
 
+            Text {
+                anchors.right: _spinner.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.fileModel ? root.fileModel.usageScanRunning : false
+                text: root.fileModel
+                    ? root.fileModel.usageDone + " / " + root.fileModel.usageTotal + " scanned"
+                    : ""
+                color: Color.scheme.surfaceVariantText
+                font.family: Type.labelMedium.family
+                font.pixelSize: Type.labelMedium.size
+            }
+
             ShapeLoader {
                 id: _spinner
                 width: 20
