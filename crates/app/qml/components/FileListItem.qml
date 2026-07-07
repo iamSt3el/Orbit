@@ -18,6 +18,7 @@ Item {
     required property string permissions
     required property string thumbnailPath
     required property real childCount
+    required property string matchLine
     // Bound to the model's `selected` role — true while this row is part
     // of the current multi-selection (Ctrl/Shift/drag-select).
     required property bool selected
@@ -362,6 +363,9 @@ Item {
                 // everything (round-2 item 20) — folders previously had
                 // no secondary line at all.
                 text: {
+                    if (root.matchLine.length > 0) {
+                        return root.matchLine
+                    }
                     var parts = []
                     if (root.isDir) {
                         if (root.childCount >= 0) {
@@ -376,6 +380,7 @@ Item {
                     }
                     return parts.join(" · ")
                 }
+                font.italic: root.matchLine.length > 0
                 visible: text.length > 0
                 elide: Text.ElideRight
                 width: parent.width

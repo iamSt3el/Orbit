@@ -95,3 +95,29 @@ async fn search_recursive_honors_the_result_limit() {
 
     assert_eq!(results.len(), 4);
 }
+
+#[tokio::test]
+async fn search_content_finds_nested_matches_with_lines() {
+    let dir = tempdir().unwrap();
+    fs::create_dir(dir.path().join("notes")).unwrap();
+    fs::write(dir.path().join("notes").join("todo.txt"), "buy milk\npay INVOICE today\n").unwrap();
+    fs::write(dir.path().join("other.txt"), "nothing here").unwrap();
+
+    let results =
+        listing::search_content(dir.path().to_path_buf(), "invoice".to_string(), false, 50).await;
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].0.name, "notes/todo.txt");
+    assert_eq!(results[0].1, "pay INVOICE today");
+}
+
+#[tokio::test]
+async fn search_content_skips_binary_files() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("blob.bin"), b"invoice\x00binary").unwrap();
+
+    let results =
+        listing::search_content(dir.path().to_path_buf(), "invoice".to_string(), false, 50).await;
+
+    assert!(results.is_empty());
+}

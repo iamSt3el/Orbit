@@ -74,6 +74,7 @@ pub mod qobject {
         #[qproperty(QString, pinned_folders_joined, cxx_name = "pinnedFoldersJoined")]
         #[qproperty(QString, expanded_dirs_joined, cxx_name = "expandedDirsJoined")]
         #[qproperty(QString, type_filter, cxx_name = "typeFilter")]
+        #[qproperty(bool, content_search, cxx_name = "contentSearch")]
         // Keyboard cursor (roadmap item 7): index into the DISPLAYED rows
         // (the same space the views render), -1 = no cursor. Delegates
         // draw the focus ring off `cursorRow === index`; moveCursor/
@@ -574,6 +575,10 @@ pub mod qobject {
         fn apply_type_filter(self: Pin<&mut FileListModel>, kind: &QString);
 
         #[qinvokable]
+        #[cxx_name = "applyContentSearch"]
+        fn apply_content_search(self: Pin<&mut FileListModel>, enabled: bool);
+
+        #[qinvokable]
         #[cxx_name = "collapseTree"]
         fn collapse_all_tree(self: Pin<&mut FileListModel>);
 
@@ -701,6 +706,8 @@ pub struct FileListModelRust {
     expanded_dirs: Vec<String>,
     expanded_dirs_joined: QString,
     type_filter: QString,
+    content_search: bool,
+    content_matches: std::collections::HashMap<String, String>,
     /// Backing for the pinnedFoldersJoined qproperty.
     pinned_folders_joined: QString,
     /// Backing for the cursorRow qproperty (-1 = no cursor).
@@ -831,6 +838,8 @@ impl Default for FileListModelRust {
             expanded_dirs: Vec::new(),
             expanded_dirs_joined: QString::from(""),
             type_filter: QString::from(""),
+            content_search: false,
+            content_matches: std::collections::HashMap::new(),
             cursor_row: -1,
             cursor_anchor_row: -1,
             history_back: Vec::new(),
@@ -879,6 +888,7 @@ const PERMISSIONS_ROLE: i32 = 0x0106;
 const THUMBNAIL_PATH_ROLE: i32 = 0x0107;
 const SELECTED_ROLE: i32 = 0x0108;
 const CHILD_COUNT_ROLE: i32 = 0x0109;
+const MATCH_LINE_ROLE: i32 = 0x010A;
 
 fn format_modified(modified: std::time::SystemTime) -> String {
     use time::format_description::well_known::Iso8601;
@@ -992,6 +1002,12 @@ impl qobject::FileListModel {
             CHILD_COUNT_ROLE => {
                 QVariant::from(&entry.child_count.map(|c| c as i64).unwrap_or(-1))
             }
+            MATCH_LINE_ROLE => QVariant::from(&QString::from(
+                self.content_matches
+                    .get(&entry.name)
+                    .map(String::as_str)
+                    .unwrap_or(""),
+            )),
             _ => QVariant::default(),
         }
     }
@@ -1008,6 +1024,7 @@ impl qobject::FileListModel {
         roles.insert(THUMBNAIL_PATH_ROLE, QByteArray::from("thumbnailPath"));
         roles.insert(SELECTED_ROLE, QByteArray::from("selected"));
         roles.insert(CHILD_COUNT_ROLE, QByteArray::from("childCount"));
+        roles.insert(MATCH_LINE_ROLE, QByteArray::from("matchLine"));
         roles
     }
 
@@ -1467,6 +1484,7 @@ impl qobject::FileListModel {
         self.as_mut().rust_mut().search_query = QString::from("");
         self.as_mut().rust_mut().selected.clear();
         self.as_mut().rust_mut().expanded_dirs.clear();
+        self.as_mut().rust_mut().content_matches.clear();
         self.as_mut().reset_type_filter();
         self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
@@ -1655,6 +1673,17 @@ impl qobject::FileListModel {
         self.as_mut().sync_listing_stats();
     }
 
+    fn apply_content_search(mut self: core::pin::Pin<&mut Self>, enabled: bool) {
+        if self.content_search == enabled {
+            return;
+        }
+        self.as_mut().set_content_search(enabled);
+        let query = self.search_query.clone();
+        if !query.to_string().is_empty() {
+            self.as_mut().set_search_query(&query);
+        }
+    }
+
     fn reset_type_filter(mut self: core::pin::Pin<&mut Self>) {
         if !self.type_filter.to_string().is_empty() {
             self.as_mut().set_type_filter(QString::from(""));
@@ -1788,11 +1817,36 @@ impl qobject::FileListModel {
                 state.listing_generation += 1;
                 state.listing_generation
             };
+            let content_mode = self.content_search;
             let qt_thread = self.qt_thread();
             runtime().spawn(async move {
-                let mut results =
-                    fm_core::listing::search_recursive(root, query_str.clone(), include_hidden, 500)
-                        .await;
+                let (mut results, matches) = if content_mode {
+                    let found = fm_core::listing::search_content(
+                        root,
+                        query_str.clone(),
+                        include_hidden,
+                        300,
+                    )
+                    .await;
+                    let mut entries = Vec::with_capacity(found.len());
+                    let mut matches = std::collections::HashMap::new();
+                    for (entry, line) in found {
+                        matches.insert(entry.name.clone(), line);
+                        entries.push(entry);
+                    }
+                    (entries, matches)
+                } else {
+                    (
+                        fm_core::listing::search_recursive(
+                            root,
+                            query_str.clone(),
+                            include_hidden,
+                            500,
+                        )
+                        .await,
+                        std::collections::HashMap::new(),
+                    )
+                };
                 sort_entries(&mut results, &sort_key, ascending);
                 let _ = qt_thread.queue(move |mut model| {
                     if model.listing_generation != generation
@@ -1802,6 +1856,7 @@ impl qobject::FileListModel {
                     }
                     model.as_mut().begin_reset_model();
                     model.as_mut().rust_mut().entries = results;
+                    model.as_mut().rust_mut().content_matches = matches;
                     model.as_mut().rust_mut().rebuild_displayed();
                     model.as_mut().end_reset_model();
                     model.as_mut().clamp_cursor();

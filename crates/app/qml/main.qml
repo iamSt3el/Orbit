@@ -1029,6 +1029,59 @@ Window {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 8
 
+                            Rectangle {
+                                id: contentChip
+                                readonly property bool active: window.fileModel
+                                    ? window.fileModel.contentSearch === true : false
+                                height: 32
+                                width: _contentChipRow.implicitWidth + 28
+                                anchors.verticalCenter: parent.verticalCenter
+                                radius: Shape.small
+                                color: active ? Color.scheme.primaryContainer : "transparent"
+                                border.width: active ? 0 : 1
+                                border.color: Color.scheme.outline
+                                Behavior on color { ColorAnimation { duration: 120 } }
+
+                                Row {
+                                    id: _contentChipRow
+                                    anchors.centerIn: parent
+                                    spacing: 6
+
+                                    Icon {
+                                        content: "manage_search"
+                                        iconSize: 16
+                                        color: contentChip.active
+                                            ? Color.scheme.primaryContainerText
+                                            : Color.scheme.surfaceVariantText
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+
+                                    Text {
+                                        text: "In contents"
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        color: contentChip.active
+                                            ? Color.scheme.primaryContainerText
+                                            : Color.scheme.surfaceVariantText
+                                        font.family: Type.labelLarge.family
+                                        font.weight: Type.labelLarge.weight
+                                        font.pixelSize: Type.labelLarge.size
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: window.fileModel.applyContentSearch(!contentChip.active)
+                                }
+                            }
+
+                            Rectangle {
+                                width: 1
+                                height: 20
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: Color.scheme.outlineVariant
+                            }
+
                             Repeater {
                                 model: [
                                     { label: "Folders", kind: "folder" },
