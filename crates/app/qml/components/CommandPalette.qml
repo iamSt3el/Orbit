@@ -51,7 +51,8 @@ Item {
         { icon: "content_paste", label: "Paste here", hint: "Ctrl+V", id: "paste" },
         { icon: "select_all", label: "Select all", hint: "Ctrl+A", id: "selectAll" },
         { icon: "undo", label: "Undo", hint: "Ctrl+Z", id: "undo" },
-        { icon: "redo", label: "Redo", hint: "Ctrl+Shift+Z", id: "redo" }
+        { icon: "redo", label: "Redo", hint: "Ctrl+Shift+Z", id: "redo" },
+        { icon: "monitoring", label: "Disk usage of this folder", hint: "", id: "diskUsage" }
     ]
 
     readonly property var _destinations: {

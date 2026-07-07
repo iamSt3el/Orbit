@@ -528,6 +528,11 @@ Window {
         commandPaletteLoader.item.open()
     }
 
+    function openDiskUsageDialog() {
+        diskUsageDialogLoader.active = true
+        diskUsageDialogLoader.item.open(fileModel.currentPath)
+    }
+
     function runPaletteAction(actionId) {
         switch (actionId) {
         case "newFolder": window.openNewFolderDialog(); break
@@ -551,6 +556,7 @@ Window {
         case "selectAll": fileModel.selectAll(); break
         case "undo": fileModel.undo(); break
         case "redo": fileModel.redo(); break
+        case "diskUsage": window.openDiskUsageDialog(); break
         }
     }
 
@@ -592,7 +598,8 @@ Window {
         pinnedContextMenuLoader.active || openWithDialogLoader.active ||
         conflictDialogLoader.active ||
         emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active ||
-        deletePermanentlyConfirmDialogLoader.active || commandPaletteLoader.active
+        deletePermanentlyConfirmDialogLoader.active || commandPaletteLoader.active ||
+        diskUsageDialogLoader.active
 
     Shortcut {
         sequences: [StandardKey.Delete]
@@ -2099,6 +2106,7 @@ Window {
             onOpenTerminalRequested: fileModel.openTerminalHere()
             onPasteRequested: fileModel.pasteEntry()
             onSelectAllRequested: fileModel.selectAll()
+            onDiskUsageRequested: window.openDiskUsageDialog()
             onClosed: Qt.callLater(() => contextMenuLoader.active = false)
         }
     }
@@ -2313,6 +2321,17 @@ Window {
             confirmLabel: "Empty Trash"
             onConfirmed: fileModel.emptyTrash()
             onClosed: Qt.callLater(() => emptyTrashConfirmDialogLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: diskUsageDialogLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: DiskUsageDialog {
+            fileModel: window.fileListModel
+            centerOffsetX: window.dialogCenterOffsetX
+            onClosed: Qt.callLater(() => diskUsageDialogLoader.active = false)
         }
     }
 

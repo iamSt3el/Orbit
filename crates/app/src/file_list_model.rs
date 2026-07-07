@@ -75,6 +75,8 @@ pub mod qobject {
         #[qproperty(QString, expanded_dirs_joined, cxx_name = "expandedDirsJoined")]
         #[qproperty(QString, type_filter, cxx_name = "typeFilter")]
         #[qproperty(bool, content_search, cxx_name = "contentSearch")]
+        #[qproperty(QString, usage_text, cxx_name = "usageText")]
+        #[qproperty(bool, usage_scan_running, cxx_name = "usageScanRunning")]
         // Keyboard cursor (roadmap item 7): index into the DISPLAYED rows
         // (the same space the views render), -1 = no cursor. Delegates
         // draw the focus ring off `cursorRow === index`; moveCursor/
@@ -579,6 +581,14 @@ pub mod qobject {
         fn apply_content_search(self: Pin<&mut FileListModel>, enabled: bool);
 
         #[qinvokable]
+        #[cxx_name = "startUsageScan"]
+        fn start_usage_scan(self: Pin<&mut FileListModel>, path: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "cancelUsageScan"]
+        fn cancel_usage_scan(self: &FileListModel);
+
+        #[qinvokable]
         #[cxx_name = "collapseTree"]
         fn collapse_all_tree(self: Pin<&mut FileListModel>);
 
@@ -708,6 +718,9 @@ pub struct FileListModelRust {
     type_filter: QString,
     content_search: bool,
     content_matches: std::collections::HashMap<String, String>,
+    usage_text: QString,
+    usage_scan_running: bool,
+    usage_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Backing for the pinnedFoldersJoined qproperty.
     pinned_folders_joined: QString,
     /// Backing for the cursorRow qproperty (-1 = no cursor).
@@ -840,6 +853,9 @@ impl Default for FileListModelRust {
             type_filter: QString::from(""),
             content_search: false,
             content_matches: std::collections::HashMap::new(),
+            usage_text: QString::from(""),
+            usage_scan_running: false,
+            usage_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             cursor_row: -1,
             cursor_anchor_row: -1,
             history_back: Vec::new(),
@@ -1671,6 +1687,61 @@ impl qobject::FileListModel {
         self.as_mut().end_reset_model();
         self.as_mut().clamp_cursor();
         self.as_mut().sync_listing_stats();
+    }
+
+    fn start_usage_scan(mut self: core::pin::Pin<&mut Self>, path: &QString) {
+        use std::sync::atomic::Ordering;
+        let dir = PathBuf::from(path.to_string());
+        let generation = self.usage_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let gen_arc = self.usage_generation.clone();
+        self.as_mut().set_usage_text(QString::from(""));
+        self.as_mut().set_usage_scan_running(true);
+        let qt_thread = self.qt_thread();
+        runtime().spawn(async move {
+            let entries = gather_entries(&dir).await;
+            let mut rows: Vec<(String, u64, bool)> = Vec::new();
+            for entry in entries {
+                if gen_arc.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                let size = if entry.is_dir {
+                    let child = entry.path.clone();
+                    tokio::task::spawn_blocking(move || fm_core::ops::path_size(&child))
+                        .await
+                        .unwrap_or(0)
+                } else {
+                    entry.size
+                };
+                rows.push((entry.name, size, entry.is_dir));
+                rows.sort_by(|a, b| b.1.cmp(&a.1));
+                let text = rows
+                    .iter()
+                    .map(|(name, bytes, is_dir)| {
+                        format!("{name}\u{1f}{bytes}\u{1f}{}", if *is_dir { 1 } else { 0 })
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let g = gen_arc.clone();
+                let _ = qt_thread.queue(move |mut model| {
+                    if g.load(Ordering::SeqCst) != generation {
+                        return;
+                    }
+                    model.as_mut().set_usage_text(QString::from(&text));
+                });
+            }
+            let g = gen_arc.clone();
+            let _ = qt_thread.queue(move |mut model| {
+                if g.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                model.as_mut().set_usage_scan_running(false);
+            });
+        });
+    }
+
+    fn cancel_usage_scan(&self) {
+        self.usage_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn apply_content_search(mut self: core::pin::Pin<&mut Self>, enabled: bool) {
