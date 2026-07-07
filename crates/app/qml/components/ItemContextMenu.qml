@@ -58,14 +58,14 @@ Item {
             ])
         : root.selectionCount > 1
         ? [
-            { icon: "content_cut", label: "Cut " + root.selectionCount + " items", action: "cut" },
-            { icon: "content_copy", label: "Copy " + root.selectionCount + " items", action: "copy" },
+            { icon: "content_cut", label: "Cut " + root.selectionCount + " items", action: "cut", shortcut: "Ctrl+X" },
+            { icon: "content_copy", label: "Copy " + root.selectionCount + " items", action: "copy", shortcut: "Ctrl+C" },
             { icon: "file_copy", label: "Duplicate " + root.selectionCount + " items", action: "duplicate" },
             { icon: "folder_zip", label: "Compress " + root.selectionCount + " items", action: "compress" },
-            { icon: "delete", label: "Delete " + root.selectionCount + " items", action: "delete", destructive: true }
+            { icon: "delete", label: "Delete " + root.selectionCount + " items", action: "delete", destructive: true, shortcut: "Del" }
         ]
         : [
-            { icon: "open_in_new", label: "Open", action: "open" }
+            { icon: "open_in_new", label: "Open", action: "open", shortcut: "Enter" }
         ].concat(root.entryIsDir ? [
             { icon: "tab", label: "Open in New Tab", action: "openInNewTab" }
         ] : [
@@ -73,13 +73,13 @@ Item {
         ]).concat(root.entryIsArchive ? [
             { icon: "unarchive", label: "Extract", action: "extract" }
         ] : []).concat([
-            { icon: "content_cut", label: "Cut", action: "cut" },
-            { icon: "content_copy", label: "Copy", action: "copy" },
-            { icon: "edit", label: "Rename", action: "rename" },
+            { icon: "content_cut", label: "Cut", action: "cut", shortcut: "Ctrl+X" },
+            { icon: "content_copy", label: "Copy", action: "copy", shortcut: "Ctrl+C" },
+            { icon: "edit", label: "Rename", action: "rename", shortcut: "F2" },
             { icon: "file_copy", label: "Duplicate", action: "duplicate" },
             { icon: "folder_zip", label: "Compress", action: "compress" },
             { icon: "link", label: "Copy Path", action: "copyPath" },
-            { icon: "delete", label: "Delete", action: "delete", destructive: true },
+            { icon: "delete", label: "Delete", action: "delete", destructive: true, shortcut: "Del" },
             { icon: "info", label: "Properties", action: "properties" }
         ])
 
@@ -126,9 +126,9 @@ Item {
 
     Rectangle {
         id: menu
-        width: 200
+        width: 220
         height: _column.implicitHeight
-        radius: Shape.small
+        radius: Shape.large
         color: Elevation.surfaceAt(2)
         clip: true
 
@@ -194,6 +194,17 @@ Item {
                             font.pixelSize: Type.bodyLarge.size
                             anchors.verticalCenter: parent.verticalCenter
                         }
+                    }
+
+                    Text {
+                        visible: !!menuItem.modelData.shortcut
+                        text: menuItem.modelData.shortcut || ""
+                        anchors.right: parent.right
+                        anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Color.scheme.surfaceVariantText
+                        font.family: Type.labelMedium.family
+                        font.pixelSize: Type.labelMedium.size
                     }
 
                     MouseArea {

@@ -47,7 +47,7 @@ Item {
         id: menu
         width: 200
         height: 44
-        radius: Shape.small
+        radius: Shape.large
         color: Elevation.surfaceAt(2)
         clip: true
 

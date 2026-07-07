@@ -75,7 +75,7 @@ Item {
         id: menu
         width: 260
         height: _content.implicitHeight + 24
-        radius: Shape.small
+        radius: Shape.large
         color: Elevation.surfaceAt(2)
 
         Column {

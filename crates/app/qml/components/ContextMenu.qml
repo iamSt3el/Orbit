@@ -32,14 +32,14 @@ Item {
     readonly property var _items: canPaste
         ? [
             { icon: "create_new_folder", label: "New folder" },
-            { icon: "content_paste", label: "Paste" },
-            { icon: "select_all", label: "Select All" },
+            { icon: "content_paste", label: "Paste", shortcut: "Ctrl+V" },
+            { icon: "select_all", label: "Select All", shortcut: "Ctrl+A" },
             { icon: "monitoring", label: "Disk Usage" },
             { icon: "terminal", label: "Open Terminal Here" }
         ]
         : [
             { icon: "create_new_folder", label: "New folder" },
-            { icon: "select_all", label: "Select All" },
+            { icon: "select_all", label: "Select All", shortcut: "Ctrl+A" },
             { icon: "monitoring", label: "Disk Usage" },
             { icon: "terminal", label: "Open Terminal Here" }
         ]
@@ -76,7 +76,7 @@ Item {
         id: menu
         width: 220
         height: _column.implicitHeight
-        radius: Shape.small
+        radius: Shape.large
         color: Elevation.surfaceAt(2)
         clip: true
 
@@ -126,6 +126,17 @@ Item {
                             font.pixelSize: Type.bodyLarge.size
                             anchors.verticalCenter: parent.verticalCenter
                         }
+                    }
+
+                    Text {
+                        visible: !!menuItem.modelData.shortcut
+                        text: menuItem.modelData.shortcut || ""
+                        anchors.right: parent.right
+                        anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Color.scheme.surfaceVariantText
+                        font.family: Type.labelMedium.family
+                        font.pixelSize: Type.labelMedium.size
                     }
 
                     MouseArea {
