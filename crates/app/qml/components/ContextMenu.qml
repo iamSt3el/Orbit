@@ -54,6 +54,9 @@ Item {
     }
 
     Keys.onEscapePressed: root.close()
+    Keys.onShortcutOverride: (event) => {
+        event.accepted = event.key === Qt.Key_Escape
+    }
 
     MouseArea {
         // See ItemContextMenu.qml — must accept every button and track

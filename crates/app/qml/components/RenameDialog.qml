@@ -28,10 +28,11 @@ Item {
     }
 
     property string _oldName: ""
+    readonly property string _oldLeaf: root._oldName.substring(root._oldName.lastIndexOf("/") + 1)
 
     function open(name) {
         root._oldName = name
-        nameInput.text = name
+        nameInput.text = name.substring(name.lastIndexOf("/") + 1)
         visible = true
         _transition.enter()
         nameInput.forceActiveFocus()
@@ -107,6 +108,11 @@ Item {
 
                     Keys.onReturnPressed: confirmButton.clicked()
                     Keys.onEscapePressed: root.close()
+                    Keys.onShortcutOverride: (event) => {
+                        event.accepted = event.key === Qt.Key_Return
+                            || event.key === Qt.Key_Enter
+                            || event.key === Qt.Key_Escape
+                    }
                 }
             }
 
@@ -125,7 +131,9 @@ Item {
                     variant: "filled"
                     text: "Rename"
                     onClicked: {
-                        if (nameInput.text.length > 0 && nameInput.text !== root._oldName) {
+                        if (nameInput.text.length > 0
+                                && nameInput.text !== root._oldLeaf
+                                && nameInput.text.indexOf("/") < 0) {
                             root.accepted(root._oldName, nameInput.text)
                         }
                         root.close()

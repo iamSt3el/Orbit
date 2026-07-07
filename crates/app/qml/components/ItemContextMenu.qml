@@ -107,6 +107,9 @@ Item {
     }
 
     Keys.onEscapePressed: root.close()
+    Keys.onShortcutOverride: (event) => {
+        event.accepted = event.key === Qt.Key_Escape
+    }
 
     MouseArea {
         // Must swallow every button and track hover itself — a MouseArea

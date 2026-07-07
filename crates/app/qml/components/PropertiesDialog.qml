@@ -87,6 +87,9 @@ Item {
     }
 
     Keys.onEscapePressed: root.close()
+    Keys.onShortcutOverride: (event) => {
+        event.accepted = event.key === Qt.Key_Escape
+    }
 
     readonly property bool _isImage: !root.entryIsDir && root.entryMimeType.indexOf("image/") === 0
 

@@ -91,9 +91,14 @@ async fn run_verbose_with_progress(
     if status.success() {
         Ok(())
     } else {
+        let message = error_lines.join("\n").trim().to_string();
         Err(io::Error::new(
             io::ErrorKind::Other,
-            error_lines.join("\n").trim().to_string(),
+            if message.is_empty() {
+                format!("bsdtar exited with {status}")
+            } else {
+                message
+            },
         ))
     }
 }

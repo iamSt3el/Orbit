@@ -51,6 +51,9 @@ Item {
     }
 
     Keys.onEscapePressed: root.finish("cancel")
+    Keys.onShortcutOverride: (event) => {
+        event.accepted = event.key === Qt.Key_Escape
+    }
 
     Rectangle {
         id: _scrim

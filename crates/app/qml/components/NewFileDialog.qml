@@ -105,6 +105,11 @@ Item {
 
                     Keys.onReturnPressed: confirmButton.clicked()
                     Keys.onEscapePressed: root.close()
+                    Keys.onShortcutOverride: (event) => {
+                        event.accepted = event.key === Qt.Key_Return
+                            || event.key === Qt.Key_Enter
+                            || event.key === Qt.Key_Escape
+                    }
                 }
             }
 
