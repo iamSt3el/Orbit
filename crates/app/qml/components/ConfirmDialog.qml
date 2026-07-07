@@ -50,6 +50,8 @@ Item {
 
     Rectangle {
         id: dialog
+        Accessible.role: Accessible.Dialog
+        Accessible.name: root.title
         width: 320
         height: _column.implicitHeight + 40
         radius: Shape.extraLarge

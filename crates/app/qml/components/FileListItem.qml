@@ -74,6 +74,16 @@ Item {
     width: ListView.view ? ListView.view.width : 0
     height: 60
 
+    Accessible.role: Accessible.ListItem
+    Accessible.name: root.isDir ? root.displayName + ", folder" : root.displayName
+    Accessible.onPressAction: {
+        if (root.isDir) {
+            root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
+        } else {
+            root.fileModel.openEntry(root.name)
+        }
+    }
+
     // Only images (raster + svg, see fm_core::mime's icon_key_for) get a
     // thumbnail — everything else keeps its Material icon glyph. Requested
     // lazily per-delegate rather than for the whole folder up front, so a

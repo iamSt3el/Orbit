@@ -184,6 +184,14 @@ Rectangle {
                 width: parent.width
                 implicitHeight: 38
 
+                Accessible.role: Accessible.Button
+                Accessible.name: navItem.modelData.label
+                Accessible.onPressAction: {
+                    if (navItem.modelData.path.length > 0 && root.fileModel) {
+                        root.fileModel.navigate(navItem.modelData.path)
+                    }
+                }
+
                 Rectangle {
                     anchors.fill: parent
                     radius: Shape.medium

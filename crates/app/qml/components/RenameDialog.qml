@@ -48,6 +48,8 @@ Item {
 
     Rectangle {
         id: dialog
+        Accessible.role: Accessible.Dialog
+        Accessible.name: "Rename"
         width: 320
         height: _column.implicitHeight + 40
         radius: Shape.extraLarge

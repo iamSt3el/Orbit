@@ -14,6 +14,10 @@ Item {
     implicitWidth: _row.implicitWidth + 48
     implicitHeight: 40
 
+    Accessible.role: Accessible.Button
+    Accessible.name: root.text.length > 0 ? root.text : root.tooltip
+    Accessible.onPressAction: root.clicked()
+
     readonly property color _containerColor: {
         if (variant === "filled") return root.destructive ? Color.scheme.error : Color.scheme.primary
         if (variant === "tonal") return Color.scheme.secondaryContainer

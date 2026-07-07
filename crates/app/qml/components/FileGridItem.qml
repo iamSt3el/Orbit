@@ -49,6 +49,16 @@ Item {
     width: GridView.view ? GridView.view.cellWidth : 0
     height: GridView.view ? GridView.view.cellHeight : 0
 
+    Accessible.role: Accessible.ListItem
+    Accessible.name: root.isDir ? root.name + ", folder" : root.name
+    Accessible.onPressAction: {
+        if (root.isDir) {
+            root.fileModel.navigate(root.fileModel.currentPath + "/" + root.name)
+        } else {
+            root.fileModel.openEntry(root.name)
+        }
+    }
+
     // See FileListItem.qml's matching comment — lazy per-delegate request,
     // no-ops if already resolved or already in flight.
     function _requestThumbnailIfNeeded() {

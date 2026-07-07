@@ -46,6 +46,8 @@ Item {
 
     Rectangle {
         id: dialog
+        Accessible.role: Accessible.Dialog
+        Accessible.name: "New file"
         width: 320
         height: _column.implicitHeight + 40
         radius: Shape.extraLarge

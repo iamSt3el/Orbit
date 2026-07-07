@@ -42,6 +42,10 @@ Item {
         Layout.preferredWidth: 40
         Layout.preferredHeight: 40
 
+        Accessible.role: Accessible.Button
+        Accessible.name: nav.tip
+        Accessible.onPressAction: if (nav.available) nav.activated()
+
         Rectangle {
             anchors.fill: parent
             radius: Shape.full
