@@ -61,6 +61,7 @@ fn main() {
                 "qml/components/PreviewPane.qml",
                 "qml/components/OpenWithDialog.qml",
                 "qml/components/ConflictDialog.qml",
+                "qml/components/ModalTransition.qml",
             ])
             .qml_file(QmlFile::from("qml/tokens/Color.qml").singleton(true))
             .qml_file(QmlFile::from("qml/tokens/Type.qml").singleton(true))
