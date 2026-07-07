@@ -233,6 +233,11 @@ Rectangle {
         }
         onActiveFocusChanged: if (!activeFocus) root.editing = false
         Keys.onEscapePressed: root.editing = false
+        Keys.onShortcutOverride: (event) => {
+            event.accepted = event.key === Qt.Key_Return
+                || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Escape
+        }
         Keys.onPressed: (event) => {
             if (event.key === Qt.Key_Tab && root.fileModel) {
                 pathInput.text = root.fileModel.completePath(pathInput.text)
@@ -261,6 +266,9 @@ Rectangle {
         // wasteful on big trees. closeSearch() still clears immediately.
         onTextChanged: _searchDebounce.restart()
         Keys.onEscapePressed: root.closeSearch()
+        Keys.onShortcutOverride: (event) => {
+            event.accepted = event.key === Qt.Key_Escape
+        }
 
         Timer {
             id: _searchDebounce
