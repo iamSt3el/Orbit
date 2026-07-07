@@ -125,19 +125,7 @@ Item {
                 height: root.iconContainerSize
                 anchors.horizontalCenter: parent.horizontalCenter
 
-                // Hover-only tonal container, matching FileListItem — see
-                // its comment for why this isn't a permanent background.
                 Rectangle {
-                    anchors.fill: parent
-                    radius: Shape.medium
-                    color: Qt.alpha(Color.scheme.primary, 0.12)
-                    opacity: (root.isDir && cellArea.containsMouse) ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-                }
-
-                Rectangle {
-                    // See FileListItem.qml's matching highlight for why
-                    // this exists alongside the hover-highlight above.
                     anchors.fill: parent
                     radius: Shape.medium
                     color: Qt.alpha(Color.scheme.primary, 0.12)
