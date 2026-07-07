@@ -1,7 +1,12 @@
 # UI/UX Roadmap 2 — Round 3
 
-> **Status (2026-07-07): items 1 + 4 + 5 (the "power navigation" slice)
-> in progress, implemented directly without a spec/plan pair by request.**
+> **Status (2026-07-07): items 1, 2, 4, 5, 6, 7, and 9 shipped** —
+> implemented directly without spec/plan pairs by request; one commit
+> per feature in git history. Batch rename (old item 3) was cut by
+> request. Item 8 (container-transform preview) is the only one left;
+> it's motion-design-heavy and should be iterated with visual review.
+> Shipped alongside, off-roadmap: inline tree expansion in list view,
+> folder item counts, hover-tint removal in both views.
 
 Successor to `docs/ui-ux-roadmap.md` (all 26 items shipped). Same ground
 rules: genuine M3 Expressive fidelity first, then speed; motion follows
