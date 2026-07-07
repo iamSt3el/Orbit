@@ -180,6 +180,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "goForward"]
         fn go_forward(self: Pin<&mut FileListModel>);
+
+        #[qinvokable]
+        #[cxx_name = "completePath"]
+        fn complete_path(self: &FileListModel, partial: &QString) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "navigateToInput"]
+        fn navigate_to_input(self: Pin<&mut FileListModel>, input: &QString) -> bool;
     }
 
     unsafe extern "RustQt" {
@@ -1454,6 +1462,34 @@ impl qobject::FileListModel {
         self.as_mut().navigate(&target_q);
         self.as_mut().rust_mut().history_navigating = false;
         self.as_mut().sync_history_props();
+    }
+
+    fn complete_path(&self, partial: &QString) -> QString {
+        match fm_core::paths::complete_dir(&partial.to_string()) {
+            Some(completed) => QString::from(&completed),
+            None => partial.clone(),
+        }
+    }
+
+    fn navigate_to_input(mut self: core::pin::Pin<&mut Self>, input: &QString) -> bool {
+        let raw = input.to_string();
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return false;
+        }
+        let expanded = fm_core::paths::expand_tilde(trimmed);
+        let mut cleaned = expanded.trim_end_matches('/').to_string();
+        if cleaned.is_empty() {
+            cleaned = "/".to_string();
+        }
+        if std::path::Path::new(&cleaned).is_dir() {
+            self.as_mut().navigate(&QString::from(&cleaned));
+            true
+        } else {
+            self.as_mut()
+                .error_occurred(QString::from(&format!("Not a folder: {trimmed}")));
+            false
+        }
     }
 
     /// (Re)starts the live watch on the directory just navigated to.

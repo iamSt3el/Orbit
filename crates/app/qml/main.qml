@@ -513,6 +513,14 @@ Window {
         }
     }
 
+    Shortcut {
+        sequence: "Ctrl+L"
+        onActivated: {
+            if (window.anyPopupOpen) return
+            contentHeader.startPathEdit()
+        }
+    }
+
     // Tabs (round-2 item 23). With a single tab the tab bar is hidden,
     // so Ctrl+T is the entry point.
     Shortcut {

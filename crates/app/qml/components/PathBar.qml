@@ -18,6 +18,7 @@ Rectangle {
     property var fileModel
 
     property bool searching: false
+    property bool editing: false
 
     implicitHeight: 40
     radius: Shape.full
@@ -31,10 +32,26 @@ Rectangle {
         }
     }
 
-    onSearchingChanged: if (root.searching) searchInput.forceActiveFocus()
+    function startEditing() {
+        root.closeSearch()
+        root.editing = true
+        pathInput.text = root.path
+        pathInput.forceActiveFocus()
+        pathInput.selectAll()
+    }
+
+    onSearchingChanged: {
+        if (root.searching) {
+            root.editing = false
+            searchInput.forceActiveFocus()
+        }
+    }
 
     // A new folder was navigated to — any active search no longer applies.
-    onPathChanged: closeSearch()
+    onPathChanged: {
+        closeSearch()
+        root.editing = false
+    }
 
     Item {
         id: leadingIcon
@@ -54,7 +71,7 @@ Rectangle {
 
         Icon {
             anchors.centerIn: parent
-            content: root.searching ? "arrow_back" : "search"
+            content: (root.searching || root.editing) ? "arrow_back" : "search"
             iconSize: 18
             color: Color.scheme.surfaceVariantText
         }
@@ -65,7 +82,9 @@ Rectangle {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                if (root.searching) {
+                if (root.editing) {
+                    root.editing = false
+                } else if (root.searching) {
                     root.closeSearch()
                 } else {
                     root.searching = true
@@ -74,7 +93,7 @@ Rectangle {
         }
 
         Tooltip {
-            text: root.searching ? "Back" : "Search"
+            text: (root.searching || root.editing) ? "Back" : "Search"
             hovered: _leadingArea.containsMouse
         }
     }
@@ -84,7 +103,7 @@ Rectangle {
     // and inert. Replaces the old elided plain-text path.
     Item {
         id: crumbs
-        opacity: root.searching ? 0 : 1
+        opacity: (root.searching || root.editing) ? 0 : 1
         visible: opacity > 0
         anchors.left: leadingIcon.right
         anchors.leftMargin: 8
@@ -95,6 +114,12 @@ Rectangle {
         clip: true
 
         Behavior on opacity { NumberAnimation { duration: Motion.standard.duration; easing.type: Easing.OutCubic } }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.IBeamCursor
+            onClicked: root.startEditing()
+        }
 
         readonly property var segments: {
             var p = root.path
@@ -178,6 +203,41 @@ Rectangle {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    TextInput {
+        id: pathInput
+        enabled: root.editing
+        opacity: root.editing ? 1 : 0
+        visible: opacity > 0
+        anchors.left: leadingIcon.right
+        anchors.leftMargin: 8
+        anchors.right: parent.right
+        anchors.rightMargin: 14
+        anchors.verticalCenter: parent.verticalCenter
+        clip: true
+        color: Color.scheme.surfaceText
+        selectionColor: Color.scheme.primary
+        selectedTextColor: Color.scheme.primaryText
+        font.family: Type.bodyLarge.family
+        font.pixelSize: Type.bodyLarge.size
+
+        Behavior on opacity { NumberAnimation { duration: Motion.standard.duration; easing.type: Easing.OutCubic } }
+
+        onAccepted: {
+            if (root.fileModel && root.fileModel.navigateToInput(pathInput.text)) {
+                root.editing = false
+            }
+        }
+        onActiveFocusChanged: if (!activeFocus) root.editing = false
+        Keys.onEscapePressed: root.editing = false
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Tab && root.fileModel) {
+                pathInput.text = root.fileModel.completePath(pathInput.text)
+                pathInput.cursorPosition = pathInput.text.length
+                event.accepted = true
             }
         }
     }
