@@ -104,7 +104,7 @@ Rectangle {
             height: 44
 
             Text {
-                text: "Files"
+                text: "Orbit"
                 anchors.left: parent.left
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter

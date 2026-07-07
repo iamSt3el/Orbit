@@ -9,7 +9,7 @@ Window {
     width: 1000
     height: 650
     visible: true
-    title: "File Manager"
+    title: "Orbit"
     color: Color.scheme.surface
 
     property string _pendingDeleteName: ""

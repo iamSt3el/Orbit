@@ -323,7 +323,7 @@ Item {
             Icon {
                 anchors.centerIn: parent
                 content: Format.iconForKey(root.iconKey, root.isDir)
-                iconSize: root.iconSize
+                iconSize: root.isDir ? Math.round(root.iconSize * 1.3) : root.iconSize
                 color: root.isDir ? Color.folderIcon : Color.scheme.surfaceVariantText
                 visible: opacity > 0
                 opacity: thumbnail.status === Image.Ready ? 0 : 1
