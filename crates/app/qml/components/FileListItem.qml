@@ -17,6 +17,7 @@ Item {
     required property string mimeType
     required property string permissions
     required property string thumbnailPath
+    required property real childCount
     // Bound to the model's `selected` role — true while this row is part
     // of the current multi-selection (Ctrl/Shift/drag-select).
     required property bool selected
@@ -262,18 +263,6 @@ Item {
             height: root.iconContainerSize
             anchors.verticalCenter: parent.verticalCenter
 
-            // The tonal container behind a folder icon is a hover-only
-            // affordance, not a permanent decoration — a constant tinted
-            // box behind every folder row reads as visual noise at list
-            // scale.
-            Rectangle {
-                anchors.fill: parent
-                radius: Shape.medium
-                color: Qt.alpha(Color.scheme.primary, 0.12)
-                opacity: (root.isDir && rowArea.containsMouse) ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-            }
-
             Rectangle {
                 // Same tonal highlight as the hover case above, but for a
                 // drag hovering over this folder mid-drop.
@@ -328,7 +317,12 @@ Item {
                 // no secondary line at all.
                 text: {
                     var parts = []
-                    if (!root.isDir) {
+                    if (root.isDir) {
+                        if (root.childCount >= 0) {
+                            parts.push(root.childCount === 0
+                                ? "Empty" : Format.formatItemCount(root.childCount))
+                        }
+                    } else {
                         parts.push(Format.formatBytes(root.size))
                     }
                     if (root.modified.length > 0) {

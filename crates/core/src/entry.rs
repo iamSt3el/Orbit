@@ -15,6 +15,7 @@ pub struct FileEntry {
     /// has actually been generated/found in the freedesktop cache — `None`
     /// until then, whether that means "not requested yet" or "unavailable".
     pub thumbnail_path: Option<PathBuf>,
+    pub child_count: Option<u64>,
 }
 
 /// Formats a Unix permission mode as a 9-character `rwxr-xr-x` style string

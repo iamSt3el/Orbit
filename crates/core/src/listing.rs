@@ -37,6 +37,13 @@ pub fn list_directory(path: PathBuf) -> mpsc::Receiver<std::io::Result<FileEntry
                     } else {
                         mime::detect(&entry_path)
                     };
+                    let child_count = if is_dir {
+                        std::fs::read_dir(&entry_path)
+                            .map(|rd| rd.count() as u64)
+                            .ok()
+                    } else {
+                        None
+                    };
 
                     let file_entry = FileEntry {
                         name: dir_entry.file_name().to_string_lossy().into_owned(),
@@ -48,6 +55,7 @@ pub fn list_directory(path: PathBuf) -> mpsc::Receiver<std::io::Result<FileEntry
                         icon_key: mime_info.icon_key,
                         permissions: format_permissions(metadata.permissions().mode()),
                         thumbnail_path: None,
+                        child_count,
                     };
 
                     if tx.send(Ok(file_entry)).await.is_err() {
@@ -124,6 +132,7 @@ pub async fn search_recursive(
                     icon_key: mime_info.icon_key,
                     permissions: format_permissions(metadata.permissions().mode()),
                     thumbnail_path: None,
+                    child_count: None,
                 });
                 if results.len() >= limit {
                     return results;

@@ -14,6 +14,7 @@ fn file_entry_stores_all_fields() {
         icon_key: "text".to_string(),
         permissions: "rw-r--r--".to_string(),
         thumbnail_path: None,
+        child_count: None,
     };
 
     assert_eq!(entry.name, "foo.txt");

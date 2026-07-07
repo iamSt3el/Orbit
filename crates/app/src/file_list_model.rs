@@ -849,6 +849,7 @@ const MIME_TYPE_ROLE: i32 = 0x0105;
 const PERMISSIONS_ROLE: i32 = 0x0106;
 const THUMBNAIL_PATH_ROLE: i32 = 0x0107;
 const SELECTED_ROLE: i32 = 0x0108;
+const CHILD_COUNT_ROLE: i32 = 0x0109;
 
 fn format_modified(modified: std::time::SystemTime) -> String {
     use time::format_description::well_known::Iso8601;
@@ -940,6 +941,9 @@ impl qobject::FileListModel {
                     .unwrap_or_default(),
             )),
             SELECTED_ROLE => QVariant::from(&self.selected.contains(&entry.name)),
+            CHILD_COUNT_ROLE => {
+                QVariant::from(&entry.child_count.map(|c| c as i64).unwrap_or(-1))
+            }
             _ => QVariant::default(),
         }
     }
@@ -955,6 +959,7 @@ impl qobject::FileListModel {
         roles.insert(PERMISSIONS_ROLE, QByteArray::from("permissions"));
         roles.insert(THUMBNAIL_PATH_ROLE, QByteArray::from("thumbnailPath"));
         roles.insert(SELECTED_ROLE, QByteArray::from("selected"));
+        roles.insert(CHILD_COUNT_ROLE, QByteArray::from("childCount"));
         roles
     }
 
@@ -3334,6 +3339,7 @@ mod selection_range_tests {
             icon_key: "text".to_string(),
             permissions: "rw-r--r--".to_string(),
             thumbnail_path: None,
+            child_count: None,
         }
     }
 
@@ -3511,6 +3517,7 @@ mod live_refresh_tests {
             icon_key: "text".to_string(),
             permissions: "rw-r--r--".to_string(),
             thumbnail_path: None,
+            child_count: None,
         }
     }
 

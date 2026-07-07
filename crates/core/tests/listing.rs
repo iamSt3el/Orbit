@@ -37,6 +37,25 @@ async fn marks_directories_correctly() {
 }
 
 #[tokio::test]
+async fn counts_directory_children() {
+    let dir = tempdir().unwrap();
+    fs::create_dir(dir.path().join("sub")).unwrap();
+    fs::write(dir.path().join("sub").join("x.txt"), b"x").unwrap();
+    fs::write(dir.path().join("sub").join("y.txt"), b"y").unwrap();
+    fs::write(dir.path().join("plain.txt"), b"p").unwrap();
+
+    let mut rx = listing::list_directory(dir.path().to_path_buf());
+    let mut counts = std::collections::HashMap::new();
+    while let Some(result) = rx.recv().await {
+        let entry = result.unwrap();
+        counts.insert(entry.name, entry.child_count);
+    }
+
+    assert_eq!(counts["sub"], Some(2));
+    assert_eq!(counts["plain.txt"], None);
+}
+
+#[tokio::test]
 async fn reports_error_for_nonexistent_directory() {
     let mut rx = listing::list_directory("/nonexistent/path/that/does/not/exist".into());
 
