@@ -39,6 +39,17 @@ Item {
     // displayed rows, which is exactly this delegate's index.
     readonly property bool isCursor: fileModel ? fileModel.cursorRow === root.index : false
 
+    // Recursive-search results are rel-path names too, but they must keep
+    // showing the full relative path un-indented — tree presentation only
+    // applies outside an active search.
+    readonly property bool _searchActive: fileModel ? fileModel.searchActive === true : false
+    readonly property int treeDepth: root._searchActive ? 0 : root.name.split("/").length - 1
+    readonly property string displayName: root._searchActive
+        ? root.name : root.name.substring(root.name.lastIndexOf("/") + 1)
+    readonly property bool isExpanded: (root.isDir && fileModel)
+        ? ("\n" + fileModel.expandedDirsJoined + "\n").indexOf("\n" + root.name + "\n") >= 0
+        : false
+
     // Dragging a row that's already part of the selection drags the whole
     // selection; dragging an unselected row drags just that one item —
     // mirrors the existing right-click rule in rowArea.onClicked below.
@@ -254,9 +265,32 @@ Item {
 
     Row {
         anchors.fill: parent
-        anchors.leftMargin: 20
+        anchors.leftMargin: 12 + root.treeDepth * 24
         anchors.rightMargin: 12
-        spacing: 16
+        spacing: 12
+
+        Item {
+            width: 20
+            height: 20
+            anchors.verticalCenter: parent.verticalCenter
+
+            Icon {
+                anchors.centerIn: parent
+                content: "chevron_right"
+                iconSize: 18
+                color: Color.scheme.surfaceVariantText
+                visible: root.isDir && !root._searchActive
+                rotation: root.isExpanded ? 90 : 0
+                Behavior on rotation { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                enabled: root.isDir && !root._searchActive
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.fileModel.toggleExpanded(root.name)
+            }
+        }
 
         Item {
             width: root.iconContainerSize
@@ -297,12 +331,12 @@ Item {
         }
 
         Column {
-            width: parent.width - root.iconContainerSize - 16
+            width: parent.width - root.iconContainerSize - 44
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
 
             Text {
-                text: root.name
+                text: root.displayName
                 color: Color.scheme.surfaceText
                 font.family: Type.bodyLarge.family
                 font.weight: Type.bodyLarge.weight

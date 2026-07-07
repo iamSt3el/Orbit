@@ -72,6 +72,7 @@ pub mod qobject {
         // Kept in sync with the Vec (the source of truth) and persisted
         // by sync_pinned_folders().
         #[qproperty(QString, pinned_folders_joined, cxx_name = "pinnedFoldersJoined")]
+        #[qproperty(QString, expanded_dirs_joined, cxx_name = "expandedDirsJoined")]
         // Keyboard cursor (roadmap item 7): index into the DISPLAYED rows
         // (the same space the views render), -1 = no cursor. Delegates
         // draw the focus ring off `cursorRow === index`; moveCursor/
@@ -562,6 +563,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setSortAscending"]
         fn set_sort_ascending(self: Pin<&mut FileListModel>, ascending: bool);
+
+        #[qinvokable]
+        #[cxx_name = "toggleExpanded"]
+        fn toggle_expanded(self: Pin<&mut FileListModel>, rel_path: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "collapseTree"]
+        fn collapse_all_tree(self: Pin<&mut FileListModel>);
     }
 }
 
@@ -676,6 +685,8 @@ pub struct FileListModelRust {
     /// pinnedFoldersJoined qproperty mirrors it (see
     /// sync_pinned_folders()) and settings.json persists it.
     pinned_folders: Vec<String>,
+    expanded_dirs: Vec<String>,
+    expanded_dirs_joined: QString,
     /// Backing for the pinnedFoldersJoined qproperty.
     pinned_folders_joined: QString,
     /// Backing for the cursorRow qproperty (-1 = no cursor).
@@ -803,6 +814,8 @@ impl Default for FileListModelRust {
             is_listing: false,
             pinned_folders: settings.pinned_folders.clone(),
             pinned_folders_joined: QString::from(&settings.pinned_folders.join("\n")),
+            expanded_dirs: Vec::new(),
+            expanded_dirs_joined: QString::from(""),
             cursor_row: -1,
             cursor_anchor_row: -1,
             history_back: Vec::new(),
@@ -908,7 +921,14 @@ fn matching_indices(entries: &[fm_core::FileEntry], query: &str, show_hidden: bo
     entries
         .iter()
         .enumerate()
-        .filter(|(_, e)| show_hidden || !e.name.starts_with('.'))
+        .filter(|(_, e)| {
+            show_hidden
+                || e.name
+                    .rsplit('/')
+                    .next()
+                    .map(|leaf| !leaf.starts_with('.'))
+                    .unwrap_or(true)
+        })
         .filter(|(_, e)| query.is_empty() || e.name.to_lowercase().contains(&query))
         .map(|(i, _)| i)
         .collect()
@@ -1418,8 +1438,10 @@ impl qobject::FileListModel {
         // shouldn't silently carry over into the new one.
         self.as_mut().rust_mut().search_query = QString::from("");
         self.as_mut().rust_mut().selected.clear();
+        self.as_mut().rust_mut().expanded_dirs.clear();
         self.as_mut().rust_mut().rebuild_displayed();
         self.as_mut().end_reset_model();
+        self.as_mut().sync_expanded_dirs();
         self.as_mut().sync_selection_count();
         self.as_mut().set_search_active(false);
         self.as_mut().set_cursor_row(-1);
@@ -1592,7 +1614,102 @@ impl qobject::FileListModel {
         });
     }
 
+    fn sync_expanded_dirs(mut self: core::pin::Pin<&mut Self>) {
+        let joined = QString::from(&self.expanded_dirs.join("\n"));
+        self.as_mut().set_expanded_dirs_joined(joined);
+    }
+
+    fn toggle_expanded(mut self: core::pin::Pin<&mut Self>, rel_path: &QString) {
+        let rel = rel_path.to_string();
+        if rel.is_empty() {
+            return;
+        }
+        if self.expanded_dirs.iter().any(|d| d == &rel) {
+            self.as_mut().collapse_dir(&rel);
+        } else {
+            self.as_mut().expand_dir(&rel);
+        }
+    }
+
+    fn expand_dir(mut self: core::pin::Pin<&mut Self>, rel: &str) {
+        let Some(parent_idx) = self
+            .entries
+            .iter()
+            .position(|e| e.name == rel && e.is_dir)
+        else {
+            return;
+        };
+        let abs = PathBuf::from(self.current_path.to_string()).join(rel);
+        let mut children = runtime().block_on(gather_entries(&abs));
+        let key = self.sort_key.to_string();
+        let ascending = self.sort_ascending;
+        sort_entries(&mut children, &key, ascending);
+        for child in &mut children {
+            child.name = format!("{rel}/{}", child.name);
+        }
+        self.as_mut().begin_reset_model();
+        {
+            let mut state = self.as_mut().rust_mut();
+            let at = parent_idx + 1;
+            state.entries.splice(at..at, children);
+            state.expanded_dirs.push(rel.to_string());
+            state.rebuild_displayed();
+        }
+        self.as_mut().end_reset_model();
+        self.as_mut().sync_expanded_dirs();
+        self.as_mut().clamp_cursor();
+        self.as_mut().sync_listing_stats();
+    }
+
+    fn collapse_dir(mut self: core::pin::Pin<&mut Self>, rel: &str) {
+        let prefix = format!("{rel}/");
+        self.as_mut().begin_reset_model();
+        {
+            let mut state = self.as_mut().rust_mut();
+            state
+                .expanded_dirs
+                .retain(|d| d != rel && !d.starts_with(&prefix));
+            state.entries.retain(|e| !e.name.starts_with(&prefix));
+            state.selected.retain(|n| !n.starts_with(&prefix));
+            state.rebuild_displayed();
+        }
+        self.as_mut().end_reset_model();
+        self.as_mut().sync_expanded_dirs();
+        self.as_mut().sync_selection_count();
+        self.as_mut().clamp_cursor();
+        self.as_mut().sync_listing_stats();
+    }
+
+    fn collapse_all_tree(mut self: core::pin::Pin<&mut Self>) {
+        if self.expanded_dirs.is_empty() {
+            return;
+        }
+        let prefixes: Vec<String> = self
+            .expanded_dirs
+            .iter()
+            .map(|d| format!("{d}/"))
+            .collect();
+        self.as_mut().begin_reset_model();
+        {
+            let mut state = self.as_mut().rust_mut();
+            state.expanded_dirs.clear();
+            state
+                .entries
+                .retain(|e| !prefixes.iter().any(|p| e.name.starts_with(p.as_str())));
+            state
+                .selected
+                .retain(|n| !prefixes.iter().any(|p| n.starts_with(p.as_str())));
+            state.rebuild_displayed();
+        }
+        self.as_mut().end_reset_model();
+        self.as_mut().sync_expanded_dirs();
+        self.as_mut().sync_selection_count();
+        self.as_mut().clamp_cursor();
+        self.as_mut().sync_listing_stats();
+    }
+
     fn set_search_query(mut self: core::pin::Pin<&mut Self>, query: &QString) {
+        self.as_mut().collapse_all_tree();
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().search_query = query.clone();
         self.as_mut().rust_mut().rebuild_displayed();
@@ -1658,6 +1775,7 @@ impl qobject::FileListModel {
     }
 
     fn set_sort_key(mut self: core::pin::Pin<&mut Self>, sort_key: &QString) {
+        self.as_mut().collapse_all_tree();
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().sort_key = sort_key.clone();
         let ascending = self.sort_ascending;
@@ -1668,6 +1786,7 @@ impl qobject::FileListModel {
     }
 
     fn set_sort_ascending(mut self: core::pin::Pin<&mut Self>, ascending: bool) {
+        self.as_mut().collapse_all_tree();
         self.as_mut().begin_reset_model();
         self.as_mut().rust_mut().sort_ascending = ascending;
         let key = self.sort_key.to_string();
@@ -1892,6 +2011,8 @@ impl qobject::FileListModel {
         fn same_entry(a: &fm_core::FileEntry, b: &fm_core::FileEntry) -> bool {
             a.name == b.name && a.is_dir == b.is_dir
         }
+
+        self.as_mut().collapse_all_tree();
 
         // A fresh listing knows nothing about already-resolved thumbnails —
         // both update paths below would otherwise drop them all on every

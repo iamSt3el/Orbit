@@ -878,6 +878,7 @@ Window {
                             fileModel.saveSettings()
                         }
                         onGridViewRequested: {
+                            fileModel.collapseTree()
                             fileModel.viewMode = "grid"
                             fileModel.saveSettings()
                         }
