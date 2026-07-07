@@ -458,8 +458,15 @@ Window {
         renameDialogLoader.item.open(name)
     }
 
+    property rect _containerSourceRect: Qt.rect(0, 0, 0, 0)
+
+    function noteContainerSource(x, y, w, h) {
+        window._containerSourceRect = Qt.rect(x, y, w, h)
+    }
+
     function openPropertiesDialog(name, isDir, size, modified, mimeType, permissions) {
         propertiesDialogLoader.active = true
+        propertiesDialogLoader.item.sourceRect = window._containerSourceRect
         propertiesDialogLoader.item.open(name, isDir, size, modified, mimeType, permissions)
     }
 
@@ -1942,12 +1949,36 @@ Window {
 
                 // Preview/details pane (round-2 item 22) — F9.
                 PreviewPane {
-                    visible: window.previewVisible
+                    id: previewPane
+                    visible: window.previewVisible || Layout.preferredWidth > 1
+                    opacity: window.previewVisible ? 1 : 0
+                    clip: true
                     Layout.fillHeight: true
-                    Layout.preferredWidth: 260
+                    Layout.preferredWidth: window.previewVisible ? 260 : 0
                     Layout.topMargin: 10
                     Layout.bottomMargin: 10
-                    Layout.rightMargin: 10
+                    Layout.rightMargin: window.previewVisible ? 10 : 0
+                    Behavior on Layout.preferredWidth {
+                        NumberAnimation {
+                            duration: Motion.emphasizedDecelerate.duration
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Motion.emphasizedDecelerate.bezier
+                        }
+                    }
+                    Behavior on Layout.rightMargin {
+                        NumberAnimation {
+                            duration: Motion.emphasizedDecelerate.duration
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Motion.emphasizedDecelerate.bezier
+                        }
+                    }
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Motion.standard.duration
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Motion.standard.bezier
+                        }
+                    }
                     // window.fileListModel, not the bare fileModel id —
                     // this component declares its own `property var
                     // fileModel` (see the alias comment above).

@@ -197,6 +197,8 @@ Item {
                     root.fileModel.setSelected(root.name, true)
                     root.ListView.view.selectionAnchor = root.name
                 }
+                var origin = root.mapToItem(null, 0, 0)
+                root.Window.window.noteContainerSource(origin.x, origin.y, root.width, root.height)
                 var scenePos = root.mapToItem(null, mouse.x, mouse.y)
                 root.contextMenuRequested(scenePos.x, scenePos.y)
                 return

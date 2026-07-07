@@ -28,6 +28,8 @@ Item {
     visible: false
     z: 2000
 
+    property rect sourceRect: Qt.rect(0, 0, 0, 0)
+
     // See ContextMenu.qml — lets the Loader wrapping this component tear
     // the instance down once it hides.
     signal closed
@@ -46,13 +48,39 @@ Item {
             root.fileModel.startFolderSizeScan(name)
         }
         visible = true
+        closeAnim.stop()
+        openAnim.stop()
+        if (root.sourceRect.width > 0) {
+            card.x = root.sourceRect.x
+            card.y = root.sourceRect.y
+            card.width = root.sourceRect.width
+            card.height = root.sourceRect.height
+            card.radius = Shape.small
+        } else {
+            card.x = (root.width - card.finalW * 0.9) / 2
+            card.y = (root.height - card.finalH * 0.9) / 2
+            card.width = card.finalW * 0.9
+            card.height = card.finalH * 0.9
+            card.radius = Shape.extraLarge
+        }
+        _scrim.opacity = 0
+        _content.opacity = 0
+        openAnim.restart()
         root.forceActiveFocus()
     }
 
     function close() {
+        if (closeAnim.running) {
+            return
+        }
+        openAnim.stop()
         if (root.entryIsDir && root.fileModel) {
             root.fileModel.cancelFolderSizeScan()
         }
+        closeAnim.restart()
+    }
+
+    function _finishClose() {
         visible = false
         root.closed()
     }
@@ -92,6 +120,7 @@ Item {
     ]
 
     Rectangle {
+        id: _scrim
         anchors.fill: parent
         color: Color.scheme.surface
         opacity: 0.4
@@ -107,17 +136,53 @@ Item {
         }
     }
 
+    ParallelAnimation {
+        id: openAnim
+        NumberAnimation { target: card; property: "x"; to: card.finalX; duration: Motion.emphasizedDecelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecelerate.bezier }
+        NumberAnimation { target: card; property: "y"; to: card.finalY; duration: Motion.emphasizedDecelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecelerate.bezier }
+        NumberAnimation { target: card; property: "width"; to: card.finalW; duration: Motion.emphasizedDecelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecelerate.bezier }
+        NumberAnimation { target: card; property: "height"; to: card.finalH; duration: Motion.emphasizedDecelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecelerate.bezier }
+        NumberAnimation { target: card; property: "radius"; to: Shape.extraLarge; duration: Motion.emphasizedDecelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecelerate.bezier }
+        NumberAnimation { target: _scrim; property: "opacity"; to: 0.4; duration: Motion.standard.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standard.bezier }
+        SequentialAnimation {
+            PauseAnimation { duration: Math.round(Motion.emphasizedDecelerate.duration * 0.3) }
+            NumberAnimation { target: _content; property: "opacity"; to: 1; duration: Math.round(Motion.emphasizedDecelerate.duration * 0.7); easing.type: Easing.OutCubic }
+        }
+    }
+
+    SequentialAnimation {
+        id: closeAnim
+        ParallelAnimation {
+            NumberAnimation { target: card; property: "x"; to: root.sourceRect.width > 0 ? root.sourceRect.x : (root.width - card.finalW * 0.9) / 2; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+            NumberAnimation { target: card; property: "y"; to: root.sourceRect.width > 0 ? root.sourceRect.y : (root.height - card.finalH * 0.9) / 2; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+            NumberAnimation { target: card; property: "width"; to: root.sourceRect.width > 0 ? root.sourceRect.width : card.finalW * 0.9; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+            NumberAnimation { target: card; property: "height"; to: root.sourceRect.width > 0 ? root.sourceRect.height : card.finalH * 0.9; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+            NumberAnimation { target: card; property: "radius"; to: root.sourceRect.width > 0 ? Shape.small : Shape.extraLarge; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+            NumberAnimation { target: _scrim; property: "opacity"; to: 0; duration: Motion.emphasizedAccelerate.duration; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedAccelerate.bezier }
+            NumberAnimation { target: _content; property: "opacity"; to: 0; duration: Math.round(Motion.emphasizedAccelerate.duration * 0.5); easing.type: Easing.OutCubic }
+        }
+        ScriptAction { script: root._finishClose() }
+    }
+
     Rectangle {
-        width: Math.min(400, root.width - 40)
-        height: _content.implicitHeight + 40
+        id: card
         radius: Shape.extraLarge
         color: Elevation.surfaceAt(3)
-        anchors.centerIn: parent
+        clip: true
+
+        Accessible.role: Accessible.Dialog
+        Accessible.name: "Properties"
+
+        readonly property real finalW: Math.min(400, root.width - 40)
+        readonly property real finalH: _content.implicitHeight + 40
+        readonly property real finalX: (root.width - finalW) / 2
+        readonly property real finalY: (root.height - finalH) / 2
 
         Column {
             id: _content
-            anchors.fill: parent
-            anchors.margins: 20
+            x: 20
+            y: 20
+            width: card.finalW - 40
             spacing: 16
 
             Column {
