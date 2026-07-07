@@ -726,6 +726,14 @@ Window {
     }
 
     Shortcut {
+        sequences: [StandardKey.Find]
+        onActivated: {
+            if (window.anyPopupOpen) return
+            contentHeader.startSearch()
+        }
+    }
+
+    Shortcut {
         sequence: "Ctrl+K"
         onActivated: {
             if (window.anyPopupOpen) return

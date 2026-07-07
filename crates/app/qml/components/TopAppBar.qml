@@ -32,6 +32,10 @@ Item {
         pathBar.startEditing()
     }
 
+    function startSearch() {
+        pathBar.searching = true
+    }
+
     // The hover-circle icon-button pattern shared by the nav cluster —
     // icon as a sibling of the highlight (see the old back button's
     // comment), plus a disabled look for history edges.
