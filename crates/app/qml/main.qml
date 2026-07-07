@@ -523,6 +523,37 @@ Window {
         settingsDialogLoader.item.open()
     }
 
+    function openCommandPalette() {
+        commandPaletteLoader.active = true
+        commandPaletteLoader.item.open()
+    }
+
+    function runPaletteAction(actionId) {
+        switch (actionId) {
+        case "newFolder": window.openNewFolderDialog(); break
+        case "newFile": window.openNewFileDialog(); break
+        case "newTab": window.newTab(); break
+        case "togglePreview": window.previewVisible = !window.previewVisible; break
+        case "terminal": fileModel.openTerminalHere(); break
+        case "settings": window.openSettingsDialog(); break
+        case "editPath": contentHeader.startPathEdit(); break
+        case "toggleView":
+            if (fileModel.viewMode === "grid") {
+                fileModel.viewMode = "list"
+            } else {
+                fileModel.collapseTree()
+                fileModel.viewMode = "grid"
+            }
+            fileModel.saveSettings()
+            break
+        case "toggleHidden": fileModel.setShowHidden(!fileModel.isShowHidden()); break
+        case "paste": fileModel.pasteEntry(); break
+        case "selectAll": fileModel.selectAll(); break
+        case "undo": fileModel.undo(); break
+        case "redo": fileModel.redo(); break
+        }
+    }
+
     // Invisible helper for "Copy Path" — TextEdit.copy() writes the current
     // selection straight to the system clipboard, no extra module needed.
     TextEdit {
@@ -561,7 +592,7 @@ Window {
         pinnedContextMenuLoader.active || openWithDialogLoader.active ||
         conflictDialogLoader.active ||
         emptyTrashConfirmDialogLoader.active || settingsDialogLoader.active ||
-        deletePermanentlyConfirmDialogLoader.active
+        deletePermanentlyConfirmDialogLoader.active || commandPaletteLoader.active
 
     Shortcut {
         sequences: [StandardKey.Delete]
@@ -673,6 +704,14 @@ Window {
         onActivated: {
             if (window.anyPopupOpen) return
             contentHeader.startPathEdit()
+        }
+    }
+
+    Shortcut {
+        sequence: "Ctrl+K"
+        onActivated: {
+            if (window.anyPopupOpen) return
+            window.openCommandPalette()
         }
     }
 
@@ -2221,6 +2260,18 @@ Window {
             confirmLabel: "Empty Trash"
             onConfirmed: fileModel.emptyTrash()
             onClosed: Qt.callLater(() => emptyTrashConfirmDialogLoader.active = false)
+        }
+    }
+
+    Loader {
+        id: commandPaletteLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: CommandPalette {
+            fileModel: window.fileListModel
+            centerOffsetX: window.dialogCenterOffsetX
+            onActionRequested: (actionId) => window.runPaletteAction(actionId)
+            onClosed: Qt.callLater(() => commandPaletteLoader.active = false)
         }
     }
 
