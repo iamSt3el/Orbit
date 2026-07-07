@@ -70,7 +70,7 @@ Rectangle {
     Timer {
         interval: 10000
         repeat: true
-        running: true
+        running: root.visible
         triggeredOnStart: true
         onTriggered: if (root.fileModel) root.fileModel.refreshVolumes()
     }

@@ -17,6 +17,8 @@ Item {
     property bool viewOptionsOpen: false
     property bool canGoBack: false
     property bool canGoForward: false
+    property bool showMenuButton: false
+    signal menuClicked
     signal backClicked
     signal forwardClicked
     signal upClicked
@@ -39,8 +41,8 @@ Item {
         property string tip: ""
         property bool available: true
         signal activated()
-        Layout.preferredWidth: 40
-        Layout.preferredHeight: 40
+        implicitWidth: 40
+        implicitHeight: 40
 
         Accessible.role: Accessible.Button
         Accessible.name: nav.tip
@@ -86,25 +88,37 @@ Item {
         // forward walk the history stacks; up goes to the parent folder
         // (the old back button's job). Disabled ends stay visible so the
         // header doesn't reflow as history changes.
-        NavButton {
-            icon: "arrow_back"
-            tip: "Back"
-            available: root.canGoBack
-            onActivated: root.backClicked()
-        }
+        Row {
+            id: _navCluster
+            spacing: 8
 
-        NavButton {
-            icon: "arrow_forward"
-            tip: "Forward"
-            available: root.canGoForward
-            onActivated: root.forwardClicked()
-        }
+            NavButton {
+                visible: root.showMenuButton
+                icon: "menu"
+                tip: "Sidebar"
+                onActivated: root.menuClicked()
+            }
 
-        NavButton {
-            icon: "arrow_upward"
-            tip: "Up"
-            available: root.showBackButton
-            onActivated: root.upClicked()
+            NavButton {
+                icon: "arrow_back"
+                tip: "Back"
+                available: root.canGoBack
+                onActivated: root.backClicked()
+            }
+
+            NavButton {
+                icon: "arrow_forward"
+                tip: "Forward"
+                available: root.canGoForward
+                onActivated: root.forwardClicked()
+            }
+
+            NavButton {
+                icon: "arrow_upward"
+                tip: "Up"
+                available: root.showBackButton
+                onActivated: root.upClicked()
+            }
         }
 
         // A flexible spacer on each side of PathBar, equal weight, is what
@@ -124,9 +138,11 @@ Item {
             // Search is roughly half the width of the plain path display.
             // Spring-animated per M3 Expressive motion — a resize this
             // visible reads as a snap without it.
-            Layout.preferredWidth: pathBar.searching
+            readonly property real _availableWidth:
+                Math.max(100, root.width - 28 - _navCluster.width - _splitButton.width - 60)
+            Layout.preferredWidth: Math.min(_availableWidth, pathBar.searching
                 ? Math.max(220, Math.min(480, root.width * 0.34))
-                : Math.max(320, Math.min(900, root.width * 0.68))
+                : Math.max(320, Math.min(900, root.width * 0.68)))
             Behavior on Layout.preferredWidth {
                 SpringAnimation {
                     spring: Motion.springStandard.spring
@@ -160,6 +176,7 @@ Item {
         // trailing chevron opens View options — replaces the old separate
         // segmented toggle + tune icon button.
         SplitButton {
+            id: _splitButton
             Layout.preferredHeight: 32
             viewMode: root.viewMode
             menuOpen: root.viewOptionsOpen

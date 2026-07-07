@@ -187,6 +187,9 @@ Window {
     // toggled by F9.
     property bool previewVisible: false
 
+    readonly property bool compact: window.width < 760
+    onCompactChanged: if (!compact) sidebarDrawer.hideNow()
+
     // Direction of the most recent navigation — "forward" (into a child),
     // "back" (up to an ancestor), or "neutral" (sidebar jump, path edit).
     // Derived from path prefixes in fileModel.onCurrentPathChanged and
@@ -296,6 +299,7 @@ Window {
             }
             window._lastPath = newPath
             _sessionSaveDebounce.restart()
+            sidebarDrawer.close()
         }
     }
 
@@ -460,7 +464,7 @@ Window {
     }
 
     property rect _containerSourceRect: Qt.rect(0, 0, 0, 0)
-    readonly property real dialogCenterOffsetX: (200 - (window.previewVisible ? 270 : 0)) / 2
+    readonly property real dialogCenterOffsetX: ((window.compact ? 0 : 200) - (window.previewVisible ? 270 : 0)) / 2
 
     function noteContainerSource(x, y, w, h) {
         window._containerSourceRect = Qt.rect(x, y, w, h)
@@ -770,7 +774,9 @@ Window {
             // FabMenu can't own its own Cancel Shortcut — two enabled
             // shortcuts on one sequence are ambiguous in Qt and neither
             // fires — so the window-level one dismisses it first.
-            if (fabMenu.expanded) {
+            if (sidebarDrawer.visible) {
+                sidebarDrawer.close()
+            } else if (fabMenu.expanded) {
                 fabMenu.dismiss()
             } else {
                 fileModel.clearSelection()
@@ -828,7 +834,24 @@ Window {
 
                 Sidebar {
                     Layout.fillHeight: true
-                    Layout.preferredWidth: 200
+                    Layout.preferredWidth: window.compact ? 0 : 200
+                    visible: Layout.preferredWidth > 1
+                    opacity: window.compact ? 0 : 1
+                    clip: true
+                    Behavior on Layout.preferredWidth {
+                        NumberAnimation {
+                            duration: Motion.emphasizedDecelerate.duration
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Motion.emphasizedDecelerate.bezier
+                        }
+                    }
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: Motion.standard.duration
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Motion.standard.bezier
+                        }
+                    }
                     // window.fileModel, NOT bare fileModel: since tabs
                     // turned fileModel into a window property (no id),
                     // every binding written ON an instance that declares
@@ -1016,6 +1039,8 @@ Window {
                         viewOptionsOpen: viewOptionsMenuLoader.active
                         canGoBack: window.fileModel ? window.fileModel.canGoBack : false
                         canGoForward: window.fileModel ? window.fileModel.canGoForward : false
+                        showMenuButton: window.compact
+                        onMenuClicked: sidebarDrawer.open()
                         onBackClicked: window.fileModel.goBack()
                         onForwardClicked: window.fileModel.goForward()
                         onUpClicked: window.fileModel.navigate(window.parentPath(window.fileModel.currentPath))
@@ -2094,6 +2119,108 @@ Window {
                         ? fileModel.singleSelectedName() : ""
                 }
             }
+        }
+    }
+
+    Item {
+        id: sidebarDrawer
+        anchors.fill: parent
+        visible: false
+
+        function open() {
+            _drawerCloseAnim.stop()
+            visible = true
+            _drawerOpenAnim.restart()
+        }
+
+        function close() {
+            if (!visible || _drawerCloseAnim.running) {
+                return
+            }
+            _drawerOpenAnim.stop()
+            _drawerCloseAnim.restart()
+        }
+
+        function hideNow() {
+            _drawerOpenAnim.stop()
+            _drawerCloseAnim.stop()
+            visible = false
+        }
+
+        Rectangle {
+            id: _drawerScrim
+            anchors.fill: parent
+            color: Color.scheme.surface
+            opacity: 0
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.AllButtons
+                onClicked: sidebarDrawer.close()
+                onWheel: (wheel) => { wheel.accepted = true }
+            }
+        }
+
+        Sidebar {
+            id: drawerSidebar
+            width: 220
+            x: -width
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.topMargin: 10
+            anchors.bottomMargin: 10
+            fileModel: window.fileModel
+            currentPath: window.fileModel && window.fileModel.currentPath ? window.fileModel.currentPath : ""
+            onSettingsRequested: {
+                sidebarDrawer.close()
+                window.openSettingsDialog()
+            }
+            onTrashContextMenuRequested: (x, y) => window.openTrashContextMenu(x, y)
+            onPinnedContextMenuRequested: (x, y, path) => window.openPinnedContextMenu(x, y, path)
+        }
+
+        ParallelAnimation {
+            id: _drawerOpenAnim
+            NumberAnimation {
+                target: drawerSidebar
+                property: "x"
+                to: 10
+                duration: Motion.emphasizedDecelerate.duration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Motion.emphasizedDecelerate.bezier
+            }
+            NumberAnimation {
+                target: _drawerScrim
+                property: "opacity"
+                to: 0.4
+                duration: Motion.standard.duration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Motion.standard.bezier
+            }
+        }
+
+        SequentialAnimation {
+            id: _drawerCloseAnim
+            ParallelAnimation {
+                NumberAnimation {
+                    target: drawerSidebar
+                    property: "x"
+                    to: -drawerSidebar.width
+                    duration: Motion.emphasizedAccelerate.duration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Motion.emphasizedAccelerate.bezier
+                }
+                NumberAnimation {
+                    target: _drawerScrim
+                    property: "opacity"
+                    to: 0
+                    duration: Motion.emphasizedAccelerate.duration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Motion.emphasizedAccelerate.bezier
+                }
+            }
+            ScriptAction { script: sidebarDrawer.visible = false }
         }
     }
 
