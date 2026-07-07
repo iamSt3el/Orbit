@@ -69,6 +69,7 @@ Item {
             hoverEnabled: true
             acceptedButtons: Qt.AllButtons
             onClicked: root.finish("cancel")
+            onWheel: (wheel) => { wheel.accepted = true }
         }
     }
 
@@ -80,6 +81,12 @@ Item {
         color: Elevation.surfaceAt(3)
         anchors.centerIn: parent
         anchors.horizontalCenterOffset: root.centerOffsetX
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onWheel: (wheel) => { wheel.accepted = true }
+        }
 
         Column {
             id: _column

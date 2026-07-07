@@ -137,6 +137,7 @@ Item {
             hoverEnabled: true
             acceptedButtons: Qt.AllButtons
             onClicked: root.close()
+            onWheel: (wheel) => { wheel.accepted = true }
         }
     }
 
@@ -181,6 +182,12 @@ Item {
         readonly property real finalH: _content.implicitHeight + 40
         readonly property real finalX: (root.width - finalW) / 2 + root.centerOffsetX
         readonly property real finalY: (root.height - finalH) / 2
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onWheel: (wheel) => { wheel.accepted = true }
+        }
 
         Column {
             id: _content

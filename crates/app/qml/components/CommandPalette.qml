@@ -147,6 +147,12 @@ Item {
         Accessible.role: Accessible.Dialog
         Accessible.name: "Command palette"
 
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onWheel: (wheel) => { wheel.accepted = true }
+        }
+
         Column {
             id: _column
             width: parent.width - 16

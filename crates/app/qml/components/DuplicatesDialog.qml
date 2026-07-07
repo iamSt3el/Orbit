@@ -121,6 +121,12 @@ Item {
         Accessible.role: Accessible.Dialog
         Accessible.name: "Duplicate files"
 
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onWheel: (wheel) => { wheel.accepted = true }
+        }
+
         Column {
             id: _header
             anchors.top: parent.top

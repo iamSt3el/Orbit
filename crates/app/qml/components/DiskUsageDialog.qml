@@ -164,6 +164,12 @@ Item {
         Accessible.role: Accessible.Dialog
         Accessible.name: "Disk usage"
 
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onWheel: (wheel) => { wheel.accepted = true }
+        }
+
         Item {
             id: header
             anchors.top: parent.top
