@@ -114,6 +114,7 @@ Item {
                     clip: true
 
                     Keys.onReturnPressed: confirmButton.clicked()
+                    Keys.onEnterPressed: confirmButton.clicked()
                     Keys.onEscapePressed: root.close()
                     Keys.onShortcutOverride: (event) => {
                         event.accepted = event.key === Qt.Key_Return
