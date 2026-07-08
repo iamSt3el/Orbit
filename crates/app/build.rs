@@ -2,7 +2,7 @@ use cxx_qt_build::{CxxQtBuilder, QmlFile, QmlModule};
 
 fn main() {
     CxxQtBuilder::new_qml_module(
-        QmlModule::new("com.filemanager.app")
+        QmlModule::new("com.orbit.app")
             .qml_files([
                 "qml/main.qml",
                 "qml/util/format.js",

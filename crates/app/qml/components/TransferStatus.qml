@@ -1,6 +1,6 @@
 import QtQuick
 import "../util/format.js" as Format
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Copy/move progress, pinned to the bottom of the sidebar — speed, done
 // size, and total size alongside the horizontal wavy progress bar (ported

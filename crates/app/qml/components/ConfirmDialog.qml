@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A minimal custom modal confirmation dialog, mirroring RenameDialog.qml's
 // structure. Used to gate destructive actions (currently: delete) behind an

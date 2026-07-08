@@ -1,7 +1,7 @@
 import QtQuick
 import "../shapes" as MaterialShapes
 import "../shapes/material-shapes.js" as MaterialShapesFn
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A standard (non-extended) M3 FAB for the single most common creation
 // action — "New folder". Floats over the file view, fixed on screen

@@ -1,7 +1,7 @@
 import QtQuick
 import "../shapes" as MaterialShapes
 import "../shapes/material-shapes.js" as MaterialShapesFn
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // M3 Expressive FAB menu (roadmap item 2): the FAB from Fab.qml, grown a
 // toggled action stack. Closed, it renders exactly like the plain FAB;

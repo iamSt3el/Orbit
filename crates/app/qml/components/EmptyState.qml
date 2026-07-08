@@ -1,7 +1,7 @@
 import QtQuick
 import "../shapes" as MaterialShapes
 import "../shapes/material-shapes.js" as MaterialShapesFn
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Expressive empty state for a contentless view (see docs/superpowers/
 // specs/2026-07-05-navigation-and-states-design.md): a large soft

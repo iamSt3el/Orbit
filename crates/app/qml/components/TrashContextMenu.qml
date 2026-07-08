@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Right-click menu for the sidebar's Trash shortcut — a single destructive
 // action (permanently emptying the Trash), unlike ItemContextMenu's varied

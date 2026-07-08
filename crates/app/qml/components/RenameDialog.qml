@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A minimal custom modal dialog for renaming an entry, mirroring
 // NewFolderDialog.qml's structure.

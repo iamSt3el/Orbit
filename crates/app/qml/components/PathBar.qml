@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A rounded pill bar showing the current path, doubling as an M3 search
 // bar — tap the leading icon to switch it into a live filter over the

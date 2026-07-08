@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Right-click menu for a pinned sidebar folder — a single action (unpin),
 // TrashContextMenu's structural twin.

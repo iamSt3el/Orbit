@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A minimal custom modal dialog (no Qt Quick Controls Dialog) for entering
 // a new file name — NewFolderDialog's file-flavored twin, opened from the

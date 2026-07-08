@@ -39,6 +39,8 @@ Everything except the fonts is optional; the related feature just won't work wit
 ## Build & run
 
 ```sh
+git clone <repo-url> orbit
+cd orbit
 cargo run --release -p fm-app
 ```
 

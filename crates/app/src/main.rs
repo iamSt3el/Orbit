@@ -15,13 +15,13 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
     fm_core::paths::migrate_legacy_config_dir();
-    cxx_qt::init_qml_module!("com.filemanager.app");
+    cxx_qt::init_qml_module!("com.orbit.app");
 
     let mut app = QGuiApplication::new();
     let mut engine = QQmlApplicationEngine::new();
 
     if let Some(engine) = engine.as_mut() {
-        engine.load(&QUrl::from("qrc:/qt/qml/com/filemanager/app/qml/main.qml"));
+        engine.load(&QUrl::from("qrc:/qt/qml/com/orbit/app/qml/main.qml"));
     }
 
     if let Some(app) = app.as_mut() {

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import "util/format.js" as Format
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 Window {
     id: window

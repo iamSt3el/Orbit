@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // "Open with…" chooser (roadmap round-2 item 26): lists installed apps
 // whose desktop entries claim the file's mime type; clicking one

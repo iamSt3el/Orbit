@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Window
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // M3 plain tooltip. Drop one inside any hoverable button and bind `hovered`
 // to that button's own MouseArea/Ripple `containsMouse`:

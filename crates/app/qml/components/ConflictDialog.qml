@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Copy/move conflict resolution (roadmap round-2 item 15): shown when a
 // paste/drop would land on existing names. One decision applies to the

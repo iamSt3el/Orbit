@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../util/format.js" as Format
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A minimal custom modal dialog showing an entry's details. The facts are
 // one continuous "grouped card" (see GroupCard.qml) — modeled on the

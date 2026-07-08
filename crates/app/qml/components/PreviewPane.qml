@@ -1,6 +1,6 @@
 import QtQuick
 import "../util/format.js" as Format
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Preview/details pane (roadmap round-2 item 22): a right-side panel
 // showing the single selected entry — full-size image preview for

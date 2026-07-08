@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // M3 Expressive horizontal wavy progress indicator — ported from the
 // user's quickshell music player's playback scrubber

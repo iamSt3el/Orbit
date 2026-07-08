@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // The content pane's own header row — back button, current path/search,
 // view options, and the list/grid switch. Deliberately not a separate

@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A single global M3-style transient snackbar for surfacing failed
 // operations and undoable-operation confirmations — see

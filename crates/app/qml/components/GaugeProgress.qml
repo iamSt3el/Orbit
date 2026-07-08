@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Circular 270° gauge — gap at the bottom, rounded caps, and a floating
 // gap between the progress tip and the remaining track. Ported from the

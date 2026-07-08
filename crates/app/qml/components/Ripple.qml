@@ -1,6 +1,6 @@
 import QtQuick
 import Qt5Compat.GraphicalEffects
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Drop-in interactive overlay: hover tint + M3-style press ripple.
 //

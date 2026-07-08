@@ -1,7 +1,7 @@
 import QtQuick
 import "../shapes" as MaterialShapes
 import "../shapes/material-shapes.js" as MaterialShapesFn
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A small M3 Expressive loading motif: cycles through the MatrialShapes
 // catalog, morphing and rotating between each, using the vendored

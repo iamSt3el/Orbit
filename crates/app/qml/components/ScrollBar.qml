@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A minimal custom scrollbar (no Qt Quick Controls, per this project's
 // design system convention) for any Flickable-derived view (ListView,

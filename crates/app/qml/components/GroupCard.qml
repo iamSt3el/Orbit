@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // One row's card in a vertically-stacked "grouped card" section — modeled
 // on the user's quickshell "Nebula" settings screen (customComponents/

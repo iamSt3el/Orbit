@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A minimal custom context menu (no Qt Quick Controls Menu, per this
 // project's design system convention) for the background of the current

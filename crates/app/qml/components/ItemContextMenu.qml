@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Right-click menu for a specific file/folder entry (as opposed to
 // ContextMenu.qml, which is the background right-click menu for the

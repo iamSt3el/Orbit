@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // M3 Expressive circular progress indicator with an optional wavy
 // (sinusoidal) arc — Material 3's 2025 update introduced wavy progress

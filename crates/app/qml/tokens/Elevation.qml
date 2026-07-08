@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 QtObject {
     // M3 elevation is communicated via tonal surface tint, not shadows.

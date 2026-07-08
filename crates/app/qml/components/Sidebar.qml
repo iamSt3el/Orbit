@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 import "../util/format.js" as Format
 
 // Sizing/coloring/animation deliberately mirrors the nav rows in the

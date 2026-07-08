@@ -1,7 +1,7 @@
 import QtQuick
 import "../shapes" as MaterialShapes
 import "../shapes/material-shapes.js" as MaterialShapesFn
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 Item {
     anchors.fill: parent

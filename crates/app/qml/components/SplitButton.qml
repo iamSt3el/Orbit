@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // M3 Expressive split button (roadmap item 10), in ButtonGroup's
 // connected-shape language: pill outer corners, tight inner corners, 2px

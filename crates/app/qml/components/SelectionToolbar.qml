@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // M3 Expressive contextual floating toolbar — springs up from the bottom
 // edge of the file view while 2+ items are selected, and sinks away when

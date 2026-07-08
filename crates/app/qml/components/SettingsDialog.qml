@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A minimal custom modal settings dialog (mirrors ConfirmDialog.qml's
 // structure), opened from Sidebar's gear icon. Rows are grouped into

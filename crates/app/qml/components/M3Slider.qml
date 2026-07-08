@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // Discrete-step M3 Expressive slider: a value bubble that pops up above the
 // handle while dragging, an active/inactive track split at the handle, and

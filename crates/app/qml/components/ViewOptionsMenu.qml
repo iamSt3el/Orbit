@@ -1,5 +1,5 @@
 import QtQuick
-import com.filemanager.app 1.0
+import com.orbit.app 1.0
 
 // A view-options dropdown: hidden-file visibility, sort key/direction, and
 // icon size. Mirrors ItemContextMenu.qml's popup mechanics (window-level
