@@ -2,8 +2,9 @@
 
 A fast Material 3 file manager for Linux, built in Rust and QML — made with the help of AI ([Claude Code](https://claude.com/claude-code)).
 
-![Orbit screenshot](docs/screenshots/main.png)
-![Orbit grid view](docs/screenshots/grid.png)
+![Orbit black](assets/black.png)
+![Orbit white](assets/white.png)
+![Orbit disk usage](assets/diskUsage.png)
 
 ## Features
 

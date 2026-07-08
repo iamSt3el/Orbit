@@ -1,2 +1,5 @@
 /target
+/docs
+.claude
+.superpowers
 .qmlls.ini
