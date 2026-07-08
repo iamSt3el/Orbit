@@ -51,8 +51,36 @@ function iconForKey(iconKey, isDir) {
     case "audio": return "audio_file"
     case "text": return "description"
     case "archive": return "folder_zip"
+    case "code": return "data_object"
+    case "doc": return "article"
+    case "spreadsheet": return "table_chart"
+    case "presentation": return "slideshow"
+    case "font": return "font_download"
+    case "database": return "database"
+    case "ebook": return "menu_book"
+    case "executable": return "terminal"
     default: return "draft"
     }
+}
+
+var _iconColors = {
+    "pdf": "#EF5350",
+    "image": "#AB47BC",
+    "video": "#5C6BC0",
+    "audio": "#EC407A",
+    "code": "#26A69A",
+    "archive": "#8D6E63",
+    "doc": "#42A5F5",
+    "spreadsheet": "#66BB6A",
+    "presentation": "#FFA726",
+    "font": "#78909C",
+    "database": "#FF7043",
+    "ebook": "#26C6DA"
+}
+
+function iconColorForKey(iconKey, fallback) {
+    var c = _iconColors[iconKey]
+    return c !== undefined ? c : fallback
 }
 
 // entryModified is the ISO 8601 string FileListModel hands to QML — the

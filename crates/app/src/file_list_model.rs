@@ -1060,7 +1060,10 @@ fn matching_indices(
         .filter(|(_, e)| match type_filter {
             "folder" => e.is_dir,
             "image" => e.icon_key == "image",
-            "document" => e.icon_key == "text" || e.icon_key == "pdf",
+            "document" => matches!(
+                e.icon_key.as_str(),
+                "text" | "pdf" | "code" | "doc" | "spreadsheet" | "presentation" | "ebook"
+            ),
             "media" => e.icon_key == "video" || e.icon_key == "audio",
             _ => true,
         })

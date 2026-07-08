@@ -15,6 +15,37 @@ fn detects_mime_by_extension() {
 }
 
 #[test]
+fn code_extensions_map_to_code_icon_key() {
+    let dir = tempdir().unwrap();
+    for name in ["main.rs", "app.py", "index.ts", "config.yaml"] {
+        let file_path = dir.path().join(name);
+        fs::write(&file_path, b"content").unwrap();
+        assert_eq!(mime::detect(&file_path).icon_key, "code", "{name}");
+    }
+}
+
+#[test]
+fn office_and_media_extensions_map_to_specific_icon_keys() {
+    let dir = tempdir().unwrap();
+    let cases = [
+        ("report.pdf", "pdf"),
+        ("letter.docx", "doc"),
+        ("data.csv", "spreadsheet"),
+        ("talk.pptx", "presentation"),
+        ("body.woff2", "font"),
+        ("cache.sqlite", "database"),
+        ("novel.epub", "ebook"),
+        ("setup.exe", "executable"),
+        ("bundle.deb", "archive"),
+    ];
+    for (name, expected) in cases {
+        let file_path = dir.path().join(name);
+        fs::write(&file_path, b"content").unwrap();
+        assert_eq!(mime::detect(&file_path).icon_key, expected, "{name}");
+    }
+}
+
+#[test]
 fn detects_mime_by_magic_bytes_when_extension_is_missing() {
     let dir = tempdir().unwrap();
     let file_path = dir.path().join("mystery");
