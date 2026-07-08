@@ -14,6 +14,7 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
+    fm_core::paths::migrate_legacy_config_dir();
     cxx_qt::init_qml_module!("com.filemanager.app");
 
     let mut app = QGuiApplication::new();

@@ -33,7 +33,7 @@ const THUMBNAIL_SIZE: u32 = 128;
 /// Subdirectory name under `thumbnails/fail/` — the spec requires
 /// namespacing failure markers per-generator so one buggy thumbnailer
 /// doesn't poison another's retries.
-const APP_NAME: &str = "filemanager";
+const APP_NAME: &str = "orbit";
 
 /// RFC 3986 unreserved characters stay literal; everything else (including
 /// non-ASCII bytes) is percent-encoded — matching how GLib's

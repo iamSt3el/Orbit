@@ -267,7 +267,7 @@ fn corrupt_image_is_marked_failed_and_not_retried() {
 
     let first = get_or_generate_in(&request, cache_dir.path());
     assert_eq!(first, ThumbnailOutcome::Unavailable);
-    let fail_dir = cache_dir.path().join("fail").join("filemanager");
+    let fail_dir = cache_dir.path().join("fail").join("orbit");
     assert!(fail_dir.exists(), "should have written a fail marker");
     let marker_written_at = std::fs::read_dir(&fail_dir)
         .unwrap()

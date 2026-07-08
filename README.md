@@ -20,7 +20,7 @@ A fast Material 3 file manager for Linux, built in Rust and QML — made with th
 - Preview pane (`F9`), live folder sizes
 - Volume mounting, storage gauges, MTP phones
 - Thumbnails, colored per-type file icons
-- Light/dark theme with live palette reload (`~/.config/filemanager/colors.json`)
+- Light/dark theme with live palette reload (`~/.config/orbit/colors.json`)
 
 ## Dependencies
 

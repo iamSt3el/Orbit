@@ -11,7 +11,7 @@ pub struct Rule {
 }
 
 /// Persisted user preferences — view mode, sort order, icon size, etc.
-/// Stored as JSON at `~/.config/filemanager/settings.json`, alongside the
+/// Stored as JSON at `~/.config/orbit/settings.json`, alongside the
 /// optional external theme color file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]

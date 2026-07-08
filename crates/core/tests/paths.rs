@@ -9,7 +9,7 @@ fn trash_dir_points_at_the_freedesktop_trash_files_directory() {
 #[test]
 fn theme_colors_path_points_inside_the_app_config_dir() {
     let path = paths::theme_colors_path().expect("XDG config dir should be resolvable");
-    assert!(path.ends_with("filemanager/colors.json"));
+    assert!(path.ends_with("orbit/colors.json"));
 }
 
 #[test]

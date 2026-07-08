@@ -18,11 +18,21 @@ pub fn trash_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|dir| dir.join("Trash").join("files"))
 }
 
-/// This app's own config directory (`~/.config/filemanager`) — currently
-/// only used to look for an external theme color file dropped in by
-/// another tool.
+/// This app's own config directory (`~/.config/orbit`) — holds
+/// settings.json and the optional external theme color file.
 pub fn app_config_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("filemanager"))
+    dirs::config_dir().map(|dir| dir.join("orbit"))
+}
+
+pub fn migrate_legacy_config_dir() {
+    let Some(config_root) = dirs::config_dir() else {
+        return;
+    };
+    let old = config_root.join("filemanager");
+    let new = config_root.join("orbit");
+    if old.is_dir() && !new.exists() {
+        let _ = std::fs::rename(&old, &new);
+    }
 }
 
 /// Where an external tool (e.g. a wallpaper-based Material You color
