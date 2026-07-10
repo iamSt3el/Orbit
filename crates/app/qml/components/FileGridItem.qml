@@ -62,7 +62,7 @@ Item {
     // See FileListItem.qml's matching comment — lazy per-delegate request,
     // no-ops if already resolved or already in flight.
     function _requestThumbnailIfNeeded() {
-        if (root.fileModel && root.iconKey === "image" && root.thumbnailPath.length === 0) {
+        if (root.fileModel && (root.iconKey === "image" || root.iconKey === "video") && root.thumbnailPath.length === 0) {
             root.fileModel.requestThumbnail(root.name)
         }
     }
@@ -164,6 +164,26 @@ Item {
                     sourceSize: Qt.size(root.iconContainerSize, root.iconContainerSize)
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
+                }
+
+                // Play badge over video thumbnails — a frame grab is
+                // otherwise indistinguishable from a photo at a glance.
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 2
+                    width: 18
+                    height: 18
+                    radius: Shape.full
+                    color: Qt.alpha("#000000", 0.55)
+                    visible: root.iconKey === "video" && thumbnail.status === Image.Ready
+
+                    Icon {
+                        anchors.centerIn: parent
+                        content: "play_arrow"
+                        iconSize: 12
+                        color: "#ffffff"
+                    }
                 }
             }
 

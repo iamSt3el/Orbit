@@ -96,8 +96,12 @@ pub fn lookup_cached_in(request: &ThumbnailRequest, cache_root: &Path) -> Option
 /// Whether `mime_type` is one this module knows how to thumbnail. Kept
 /// public so callers (the QML-facing model) can skip even asking for a
 /// thumbnail — e.g. only wiring up the request for entries whose icon key
-/// is "image" in the first place.
+/// is "image" or "video" in the first place.
 pub fn is_thumbnailable(mime_type: &str) -> bool {
+    is_image_mime(mime_type) || is_video_mime(mime_type)
+}
+
+fn is_image_mime(mime_type: &str) -> bool {
     matches!(
         mime_type,
         "image/png"
@@ -109,6 +113,23 @@ pub fn is_thumbnailable(mime_type: &str) -> bool {
             | "image/tiff"
             | "image/webp"
             | "image/svg+xml"
+    )
+}
+
+fn is_video_mime(mime_type: &str) -> bool {
+    matches!(
+        mime_type,
+        "video/mp4"
+            | "video/x-matroska"
+            | "video/webm"
+            | "video/quicktime"
+            | "video/x-msvideo"
+            | "video/mpeg"
+            | "video/ogg"
+            | "video/x-m4v"
+            | "video/3gpp"
+            | "video/x-flv"
+            | "video/x-ms-wmv"
     )
 }
 
@@ -124,7 +145,12 @@ pub fn get_or_generate(request: &ThumbnailRequest) -> ThumbnailOutcome {
 }
 
 pub fn get_or_generate_in(request: &ThumbnailRequest, cache_root: &Path) -> ThumbnailOutcome {
-    if !is_thumbnailable(&request.mime_type) || request.size > MAX_SOURCE_BYTES {
+    // The byte cap bounds *decode* cost, which for images scales with file
+    // size. Extracting one frame from a video doesn't, and videos routinely
+    // exceed any sane image cap — so only images are size-gated.
+    if !is_thumbnailable(&request.mime_type)
+        || (is_image_mime(&request.mime_type) && request.size > MAX_SOURCE_BYTES)
+    {
         return ThumbnailOutcome::Unavailable;
     }
     let Some((uri, mtime, key)) = request_identity(request) else {
@@ -144,11 +170,15 @@ pub fn get_or_generate_in(request: &ThumbnailRequest, cache_root: &Path) -> Thum
     }
 
     match render_thumbnail(&request.source_path, &request.mime_type) {
-        Some(rgba) => match write_atomic_png(&normal_dir, &key, &rgba, &uri, mtime) {
+        RenderOutcome::Rendered(rgba) => match write_atomic_png(&normal_dir, &key, &rgba, &uri, mtime) {
             Some(path) => ThumbnailOutcome::Ready(path),
             None => ThumbnailOutcome::Unavailable,
         },
-        None => {
+        // No fail marker when the generator itself is absent (ffmpeg not
+        // installed): installing it later should make thumbnails appear
+        // without requiring every video's mtime to change first.
+        RenderOutcome::GeneratorUnavailable => ThumbnailOutcome::Unavailable,
+        RenderOutcome::Failed => {
             // 1x1 transparent marker — its presence (with a matching
             // Thumb::MTime) is what "fresh" means for a failure, so a
             // known-broken/unsupported file isn't re-decoded on every scan.
@@ -248,12 +278,67 @@ struct RenderedRgba {
     pixels: Vec<u8>,
 }
 
-fn render_thumbnail(path: &Path, mime_type: &str) -> Option<RenderedRgba> {
-    if mime_type == "image/svg+xml" {
+enum RenderOutcome {
+    Rendered(RenderedRgba),
+    Failed,
+    /// The external generator (ffmpeg) isn't installed — distinct from
+    /// `Failed` so no fail marker poisons the retry after it's installed.
+    GeneratorUnavailable,
+}
+
+fn render_thumbnail(path: &Path, mime_type: &str) -> RenderOutcome {
+    if is_video_mime(mime_type) {
+        return render_video(path);
+    }
+    let rendered = if mime_type == "image/svg+xml" {
         render_svg(path)
     } else {
         render_raster(path)
+    };
+    match rendered {
+        Some(rgba) => RenderOutcome::Rendered(rgba),
+        None => RenderOutcome::Failed,
     }
+}
+
+/// One frame from a few seconds in (past intros/black leaders), falling
+/// back to the very first frame for clips shorter than the seek point.
+fn render_video(path: &Path) -> RenderOutcome {
+    let binary = std::env::var("FM_FFMPEG").unwrap_or_else(|_| "ffmpeg".to_string());
+    for seek in ["3", "0"] {
+        let output = std::process::Command::new(&binary)
+            .args(["-v", "error", "-ss", seek, "-i"])
+            .arg(path)
+            .args(["-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-"])
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output();
+        let output = match output {
+            Ok(output) => output,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return RenderOutcome::GeneratorUnavailable;
+            }
+            Err(_) => return RenderOutcome::Failed,
+        };
+        if output.stdout.is_empty() {
+            continue;
+        }
+        let Ok(frame) = image::load_from_memory_with_format(&output.stdout, image::ImageFormat::Png)
+        else {
+            return RenderOutcome::Failed;
+        };
+        if (frame.width() as u64) * (frame.height() as u64) > MAX_SOURCE_PIXELS {
+            return RenderOutcome::Failed;
+        }
+        let thumbnail = frame.thumbnail(THUMBNAIL_SIZE, THUMBNAIL_SIZE).to_rgba8();
+        let (width, height) = thumbnail.dimensions();
+        return RenderOutcome::Rendered(RenderedRgba {
+            width,
+            height,
+            pixels: thumbnail.into_raw(),
+        });
+    }
+    RenderOutcome::Failed
 }
 
 fn render_raster(path: &Path) -> Option<RenderedRgba> {

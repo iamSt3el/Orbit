@@ -85,14 +85,15 @@ Item {
         }
     }
 
-    // Only images (raster + svg, see fm_core::mime's icon_key_for) get a
-    // thumbnail — everything else keeps its Material icon glyph. Requested
-    // lazily per-delegate rather than for the whole folder up front, so a
-    // directory with thousands of photos doesn't decode all of them at
-    // once; FileListModel itself no-ops a repeat request for an entry
-    // that's already resolved or already in flight.
+    // Only images (raster + svg) and videos (one ffmpeg-extracted frame,
+    // see fm_core::thumbnails) get a thumbnail — everything else keeps its
+    // Material icon glyph. Requested lazily per-delegate rather than for
+    // the whole folder up front, so a directory with thousands of photos
+    // doesn't decode all of them at once; FileListModel itself no-ops a
+    // repeat request for an entry that's already resolved or already in
+    // flight.
     function _requestThumbnailIfNeeded() {
-        if (root.fileModel && root.iconKey === "image" && root.thumbnailPath.length === 0) {
+        if (root.fileModel && (root.iconKey === "image" || root.iconKey === "video") && root.thumbnailPath.length === 0) {
             root.fileModel.requestThumbnail(root.name)
         }
     }
@@ -340,6 +341,24 @@ Item {
                 sourceSize: Qt.size(root.iconContainerSize, root.iconContainerSize)
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
+            }
+
+            // Play badge over video thumbnails — see FileGridItem.qml.
+            Rectangle {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                width: 14
+                height: 14
+                radius: Shape.full
+                color: Qt.alpha("#000000", 0.55)
+                visible: root.iconKey === "video" && thumbnail.status === Image.Ready
+
+                Icon {
+                    anchors.centerIn: parent
+                    content: "play_arrow"
+                    iconSize: 10
+                    color: "#ffffff"
+                }
             }
         }
 

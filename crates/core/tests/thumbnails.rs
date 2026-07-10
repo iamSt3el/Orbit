@@ -118,7 +118,6 @@ fn is_thumbnailable_accepts_known_image_formats_and_rejects_others() {
     assert!(is_thumbnailable("image/svg+xml"));
     assert!(is_thumbnailable("image/jpeg"));
     assert!(!is_thumbnailable("text/plain"));
-    assert!(!is_thumbnailable("video/mp4"));
     assert!(!is_thumbnailable("inode/directory"));
 }
 
@@ -294,4 +293,146 @@ fn corrupt_image_is_marked_failed_and_not_retried() {
         .modified()
         .unwrap();
     assert_eq!(marker_written_at, marker_still_written_at);
+}
+
+static FFMPEG_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn ffmpeg_available() -> bool {
+    std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn write_fixture_video(path: &std::path::Path) {
+    let status = std::process::Command::new("ffmpeg")
+        .args(["-v", "error", "-f", "lavfi", "-i", "color=c=red:s=64x48:d=1"])
+        .args(["-pix_fmt", "yuv420p", "-y"])
+        .arg(path)
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+fn video_request(source_path: &std::path::Path) -> ThumbnailRequest {
+    ThumbnailRequest {
+        source_path: source_path.to_path_buf(),
+        mime_type: "video/mp4".to_string(),
+        size: std::fs::metadata(source_path).unwrap().len(),
+        modified: std::fs::metadata(source_path).unwrap().modified().unwrap(),
+    }
+}
+
+#[test]
+fn is_thumbnailable_accepts_common_video_formats() {
+    assert!(is_thumbnailable("video/mp4"));
+    assert!(is_thumbnailable("video/x-matroska"));
+    assert!(is_thumbnailable("video/webm"));
+    assert!(is_thumbnailable("video/quicktime"));
+    assert!(is_thumbnailable("video/x-msvideo"));
+    assert!(!is_thumbnailable("audio/mpeg"));
+    assert!(!is_thumbnailable("application/pdf"));
+}
+
+#[test]
+fn generates_and_caches_a_thumbnail_for_a_short_video() {
+    // The 1s fixture is shorter than the 3s seek point, so this also
+    // exercises the retry-at-start fallback.
+    let _guard = FFMPEG_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !ffmpeg_available() {
+        eprintln!("skipping: ffmpeg not on PATH");
+        return;
+    }
+    let source_dir = tempdir().unwrap();
+    let cache_dir = tempdir().unwrap();
+    let source_path = source_dir.path().join("clip.mp4");
+    write_fixture_video(&source_path);
+
+    let request = video_request(&source_path);
+    let ThumbnailOutcome::Ready(generated) = get_or_generate_in(&request, cache_dir.path()) else {
+        panic!("expected video generation to succeed");
+    };
+    assert!(generated.exists());
+    assert_eq!(lookup_cached_in(&request, cache_dir.path()), Some(generated));
+    assert!(!cache_dir.path().join("fail").exists());
+}
+
+#[test]
+fn video_larger_than_the_image_byte_cap_still_gets_a_thumbnail() {
+    let _guard = FFMPEG_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !ffmpeg_available() {
+        eprintln!("skipping: ffmpeg not on PATH");
+        return;
+    }
+    let source_dir = tempdir().unwrap();
+    let cache_dir = tempdir().unwrap();
+    let source_path = source_dir.path().join("clip.mp4");
+    write_fixture_video(&source_path);
+
+    let mut request = video_request(&source_path);
+    request.size = 60 * 1024 * 1024;
+    assert!(matches!(
+        get_or_generate_in(&request, cache_dir.path()),
+        ThumbnailOutcome::Ready(_)
+    ));
+}
+
+#[test]
+fn oversized_image_is_still_skipped_by_the_byte_cap() {
+    let source_dir = tempdir().unwrap();
+    let cache_dir = tempdir().unwrap();
+    let source_path = source_dir.path().join("photo.png");
+    write_fixture_png(&source_path);
+
+    let mut request = ThumbnailRequest {
+        source_path: source_path.clone(),
+        mime_type: "image/png".to_string(),
+        size: 0,
+        modified: std::fs::metadata(&source_path).unwrap().modified().unwrap(),
+    };
+    request.size = 60 * 1024 * 1024;
+    assert_eq!(
+        get_or_generate_in(&request, cache_dir.path()),
+        ThumbnailOutcome::Unavailable
+    );
+}
+
+#[test]
+fn missing_ffmpeg_reports_unavailable_without_writing_a_fail_marker() {
+    let _guard = FFMPEG_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let source_dir = tempdir().unwrap();
+    let cache_dir = tempdir().unwrap();
+    let source_path = source_dir.path().join("clip.mp4");
+    std::fs::write(&source_path, b"not really a video").unwrap();
+
+    std::env::set_var("FM_FFMPEG", "/nonexistent/ffmpeg-for-test");
+    let request = video_request(&source_path);
+    let outcome = get_or_generate_in(&request, cache_dir.path());
+    std::env::remove_var("FM_FFMPEG");
+
+    assert_eq!(outcome, ThumbnailOutcome::Unavailable);
+    assert!(!cache_dir.path().join("fail").exists());
+}
+
+#[test]
+fn corrupt_video_is_marked_failed_and_not_retried() {
+    let _guard = FFMPEG_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !ffmpeg_available() {
+        eprintln!("skipping: ffmpeg not on PATH");
+        return;
+    }
+    let source_dir = tempdir().unwrap();
+    let cache_dir = tempdir().unwrap();
+    let source_path = source_dir.path().join("broken.mp4");
+    std::fs::write(&source_path, b"garbage bytes, not a video").unwrap();
+
+    let request = video_request(&source_path);
+    assert_eq!(
+        get_or_generate_in(&request, cache_dir.path()),
+        ThumbnailOutcome::Unavailable
+    );
+    assert!(cache_dir.path().join("fail").join("orbit").exists());
 }
